@@ -614,8 +614,15 @@ def finalize(items, d, idx):
                 it["비고"] = d["note"]
         else:
             it["기본색인"] = True
+        it["제외사유"] = ""
+        if not it["기본색인"]:
+            it["제외사유"] = "구판"
         if it["구분"] == "서식":                 # 서식은 표시를 남기고 기본 색인에서는 뺀다
             it["기본색인"] = False
+            it["제외사유"] = "서식"
+        elif it["조항"].startswith("졸업학점표 |") and not it["조항"].endswith(" 경영학부"):
+            it["기본색인"] = False               # 대상 학과(경영학부)가 아닌 학과 행은 색인에서 뺀다
+            it["제외사유"] = "대상 외 학과"
         tag = pathlib.Path(d["file"]).stem
         it["id"] = f"{idx:02d}-{i:04d}"
         head = f"[{it['대학']} | {it['규정명']}" + (f" ({it['판본']}{it['판본연도'] or ''})" if it["판본"] == "구판" else "") + \
