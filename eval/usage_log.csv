@@ -9,3 +9,5 @@
 2026-11-05T09:33:56,rag_answer,gpt-6-luna,119068,13289,0.01855,"기본 RAG 개발용 51문항, k=5, answer-v1"
 2026-11-05T09:33:56,rag_query_embed,text-embedding-3-small,1842,0,0.00004,"기본 RAG 개발용 51문항, k=5, answer-v1"
 2026-11-05T09:37:46,rag_judge,gpt-6-luna,80401,17776,0.01693,"판정관 judge-v1, 51문항"
+2026-11-05T10:00:43,rag_judge,gpt-6-luna,80401,17747,0.01691,"판정관 judge-v2, 51문항"
+2026-11-05T10:05:30,rag_diag_embed,text-embedding-3-small,1842,0,0.00004,"오답노트 진단: 정답 청크 순위(top-300) 조회, 개발용 51문항 질문 재임베딩"

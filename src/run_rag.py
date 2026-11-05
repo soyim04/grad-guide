@@ -2,7 +2,7 @@
 
 하위 명령
   answer  질문 임베딩 → Chroma 상위 k개 → 답변 생성. 결과: eval/results/<날짜>_dev_base-rag_<모델>.csv
-  judge   답변 파일을 읽어 자동 표시 + 판정관(LLM) 사전 채점. 결과: <같은 이름>_grade-v1.csv
+  judge   답변 파일을 읽어 자동 표시 + 판정관(LLM) 사전 채점. 결과: <같은 이름>_grade-v<판정관 버전>.csv (이전 채점 파일의 사람 판정 열을 가져옴)
           (최종판정·최종틀린이유·최종인용일치·최종검색적중 열은 사람이 채운다)
   report  사람이 채운 채점 파일에서 지표를 계산해 출력하고 <같은 이름>_report.md로 저장
 
@@ -49,7 +49,8 @@ JUDGE_MODEL = "gpt-6-luna"
 PRICE_IN, PRICE_OUT = 0.10, 0.50  # 달러 / 100만 토큰 (blank_test.py와 같음)
 K = 5
 PROMPT_VERSION = "answer-v1"
-JUDGE_VERSION = "judge-v1"
+JUDGE_VERSION = "judge-v2"  # v2: 판정관 입력의 인용 번호를 답변이 쓴 검색 번호 그대로 사용 (v1은 1부터 다시 매겨 어긋남). 프롬프트 문구는 v1과 같음
+GRADE_TAG = "grade-" + JUDGE_VERSION.split("-")[1]
 
 ANSWER_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·한밭·목원)의 졸업요건 안내 도우미입니다.
 아래 [근거]에 적힌 내용만으로, 한국어로 쉽게 답하세요.
@@ -106,6 +107,7 @@ JUDGE_SCHEMA = {
     "additionalProperties": False,
 }
 
+HUMAN_COLS = ("최종판정", "최종틀린이유", "최종인용일치", "최종검색적중", "채점자", "메모")
 UNANSWERABLE_RE = re.compile(r"확인\s*불가|확인\s*(할|될|되지|이)\s*(수\s*)?(없|않|어렵)|확인되지|알 수 없|근거(에|가)?\s*없")
 NUM_RE = re.compile(r"\d+(?:\.\d+)?")
 
@@ -343,11 +345,17 @@ def cmd_judge(args):
 
     chat = Chat(OpenAI())
     out, tin_sum, tout_sum = [], 0, 0
+    human = {}  # 이전 판정관 버전의 채점 파일이 있으면 사람 판정 열을 그대로 가져온다
+    for prev in sorted(ans_path.parent.glob(ans_path.stem + "_grade-v*.csv")):
+        if not prev.stem.endswith(GRADE_TAG):
+            human = {r["id"]: r for r in load_csv(prev)}
     for a in answers:
         q = dev[a["id"]]
+        nums = [n for n in a["인용"].split(";") if n]
+        cids = [c for c in a["인용청크"].split(";") if c]
         cited_txt = "\n\n".join(
-            f"[인용 {i}] {all_chunks[cid]['대학']} / {all_chunks[cid]['규정명']} / {all_chunks[cid]['조항']}\n{all_chunks[cid]['text']}"
-            for i, cid in enumerate([c for c in a["인용청크"].split(";") if c], 1)) or "(인용 없음)"
+            f"[인용 {n}] {all_chunks[cid]['대학']} / {all_chunks[cid]['규정명']} / {all_chunks[cid]['조항']}\n{all_chunks[cid]['text']}"
+            for n, cid in zip(nums, cids)) or "(인용 없음)"
         user = (f"[문항]\n질문: {q['질문']}\n채점유형: {q['채점유형']}\n정답: {q['정답']}\n"
                 f"핵심항목: {q['핵심항목']}\n오답신호: {q['오답신호'] or '(없음)'}\n\n"
                 f"[챗봇 답변]\n{a['답변']}\n\n[인용한 근거]\n{cited_txt}")
@@ -364,13 +372,13 @@ def cmd_judge(args):
             "판정관_판정": j["verdict"], "판정관_틀린이유": j["틀린이유"], "판정관_인용일치": j["인용일치"],
             "판정관_누락": ";".join(j["missing"]), "판정관_섞임": ";".join(j["contaminated"]), "판정관_이유": j["reason"],
             "사람확인_우선": attention(q, flags, j["verdict"]),
-            "최종판정": "", "최종틀린이유": "", "최종인용일치": "", "최종검색적중": "", "메모": "",
+            **{k: human.get(a["id"], {}).get(k, "") for k in HUMAN_COLS},
             "판정관모델": JUDGE_MODEL, "판정프롬프트버전": JUDGE_VERSION, "판정프롬프트해시": prompt_hash(JUDGE_SYSTEM),
             "판정온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
         })
         print(f"  {a['id']} {j['verdict']} 인용 {j['인용일치']}", flush=True)
 
-    path = ans_path.with_name(ans_path.stem + "_grade-v1.csv")
+    path = ans_path.with_name(ans_path.stem + f"_{GRADE_TAG}.csv")
     write_csv(path, out, list(out[0]))
     cost = tin_sum / 1e6 * PRICE_IN + tout_sum / 1e6 * PRICE_OUT
     log_usage("rag_judge", JUDGE_MODEL, tin_sum, tout_sum, cost, f"판정관 {JUDGE_VERSION}, {len(out)}문항" + (" (smoke)" if args.smoke else ""))
@@ -386,7 +394,7 @@ def frac(n, d):
 
 def cmd_report(args):
     ans_path = find_answer_file(args.smoke)
-    grade = load_csv(ans_path.with_name(ans_path.stem + "_grade-v1.csv"))
+    grade = load_csv(ans_path.with_name(ans_path.stem + f"_grade-{args.grade}.csv"))
     answers = {a["id"]: a for a in load_csv(ans_path)}
     blank = [r for r in grade if not r["최종판정"].strip()]
     if blank and not args.allow_unfinished:
@@ -434,8 +442,16 @@ def cmd_report(args):
             sums[key][1] += d
     lines.append("- 검색 혼입률 (top-5 청크 중 다른 대학·다른 학번 판): "
                  + " · ".join(f"{k} {frac(*sums[k])}" for k in ("합계", "대학", "학번")))
-    hit = [r for r in rows if r["최종검색적중"] in ("Y", "N")]
-    lines.append(f"- 검색 적중률 (근거 청크가 top-5에 있음, 불명 제외): {frac(sum(r['최종검색적중'] == 'Y' for r in hit), len(hit))}")
+    hit = [r for r in rows if r["최종검색적중"] in ("Y", "부분", "대체", "N")]
+    hc = Counter(r["최종검색적중"] for r in hit)
+    lines.append(f"- 검색 적중 (확인불가·되묻기 문항과 미판정 제외, {len(hit)}문항): 전부 적중 Y {frac(hc['Y'], len(hit))} · "
+                 f"일부 적중 {hc['부분']} · 대체 근거만 적중 {hc['대체']} · 미적중 {hc['N']}")
+    lines.append(f"  - 정답 청크가 1개 이상 top-5에 있음(Y+부분): {frac(hc['Y'] + hc['부분'], len(hit))}")
+    lines.append(f"  - 답을 뒷받침하는 청크가 top-5에 있음(Y+부분+대체): {frac(hc['Y'] + hc['부분'] + hc['대체'], len(hit))}")
+    na = [r["id"] for r in rows if r["최종검색적중"] == "해당없음"]
+    unk = [r["id"] for r in rows if not r["최종검색적중"]]
+    lines.append(f"  - 해당없음 {len(na)}문항({', '.join(na)}), 미판정 {len(unk)}문항({', '.join(unk)})")
+    lines.append("  - 적중 정의: 평가셋 `근거` 칸의 조문마다 청크를 찾아(정답 청크) 전부 top-5에 있으면 Y, 일부면 부분. 정답 청크가 없고 같은 대학의 다른 청크가 답을 뒷받침하면 대체.")
     cand = [any(x == "Y" for x in answers[r["id"]]["적중후보"].split(";")) for r in rows if r["채점유형"] != "확인불가" and r["채점유형"] != "되묻기"]
     lines.append(f"- (참고) 자동 적중 후보: {frac(sum(cand), len(cand))} (확인불가·되묻기 제외, 규정명+조항 문자열 일치, 사람 확인 전 수치)")
     agree = sum(r["판정관_판정"] == r["최종판정"] for r in rows)
@@ -444,7 +460,7 @@ def cmd_report(args):
     lines += ["", "## 틀린 이유 집계 (정답 아닌 문항, 복수 가능)", "| 이유 | 건수 |", "|---|---|"]
     lines += [f"| {k} | {v} |" for k, v in reasons.most_common()]
     text = "\n".join(lines) + "\n"
-    out = ans_path.with_name(ans_path.stem + "_report.md")
+    out = ans_path.with_name(ans_path.stem + f"_report-{args.grade}.md")
     out.write_text(text, encoding="utf-8")
     print(text)
     print(f"저장: {out.relative_to(ROOT)}")
@@ -461,6 +477,7 @@ def main():
     j.add_argument("--smoke", action="store_true")
     r = sub.add_parser("report")
     r.add_argument("--smoke", action="store_true")
+    r.add_argument("--grade", default=GRADE_TAG.split("-")[1], help="읽을 채점 파일 버전 (v1, v2)")
     r.add_argument("--allow-unfinished", action="store_true", help="최종판정이 빈 문항을 빼고 계산")
     args = p.parse_args()
     {"answer": cmd_answer, "judge": cmd_judge, "report": cmd_report}[args.cmd](args)
