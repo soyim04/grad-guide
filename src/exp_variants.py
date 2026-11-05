@@ -32,7 +32,97 @@ def strip_pua(text):
     return PUA_RE.sub("", text)
 
 
-VARIANTS = {"exp1a": strip_pua}
+# ---------- exp5a: 긴 청크 분할 ----------
+CAP = 600
+MIN_PIECE = 80
+HEAD_MAX_LINES, HEAD_MAX_CHARS = 6, 200
+TABLE_KINDS = ("표", "별표", "별지", "졸업학점표")
+BOUNDARY_RE = re.compile(
+    r"^[ \t]*(?:\d+[.)]|\(\d+\)|[가-하][.)]|[①-⑳㉑-㉟]|[○●■□◆◇▶▷▪※\-·ㆍ◦]|제\d+조|<|\[)")
+NUM_TOKEN_RE = re.compile(r"^\d+(?:\.\d+)?$")
+
+
+def split_head_lines(text):
+    """표 성격 청크의 머리줄: 맨 앞에서 '숫자가 2개 이상 든 줄(데이터 줄)'이 나오기 전까지, 최대 6줄·200자."""
+    lines, head, size = text.split("\n"), [], 0
+    for ln in lines:
+        toks = [t for t in re.split(r"[\s|]+", ln.strip()) if t]
+        if sum(bool(NUM_TOKEN_RE.match(t)) for t in toks) >= 2:
+            break
+        if len(head) >= HEAD_MAX_LINES or size + len(ln) + 1 > HEAD_MAX_CHARS:
+            break
+        head.append(ln)
+        size += len(ln) + 1
+    return "\n".join(head)
+
+
+def candidate_cuts(body):
+    """(위치, 등급): 등급 0=번호·기호 줄 앞, 1=아무 줄 앞, 2=문장 끝 뒤, 3=공백 뒤"""
+    cuts, pos = [], 0
+    for ln in body.split("\n")[:-1]:
+        pos += len(ln) + 1
+        cuts.append((pos, 0 if BOUNDARY_RE.match(body[pos:body.find("\n", pos) if body.find("\n", pos) >= 0 else len(body)]) else 1))
+    for m in re.finditer(r"[.다요음함][ \t]+(?=\S)", body):
+        cuts.append((m.end(), 2))
+    for m in re.finditer(r"[ \t]+(?=\S)", body):
+        cuts.append((m.end(), 3))
+    return cuts
+
+
+def split_body(body):
+    n = len(body)
+    m = -(-n // CAP)
+    while True:
+        cuts, prev, ok = [], 0, True
+        cand = candidate_cuts(body)
+        for j in range(1, m):
+            target = j * n / m
+            lo, hi = max(prev + MIN_PIECE, n - CAP * (m - j)), prev + CAP
+            pick = None
+            for tier in range(4):
+                opts = [(abs(p - target), p) for p, t in cand if t == tier and lo <= p <= hi]
+                if opts:
+                    pick = min(opts)[1]
+                    break
+            if pick is None:
+                ok = False
+                break
+            cuts.append(pick)
+            prev = pick
+        pieces = [body[a:b] for a, b in zip([0] + cuts, cuts + [n])]
+        if ok and all(len(x.strip()) <= CAP for x in pieces):
+            return [x.strip("\n") for x in pieces]
+        m += 1
+        if m > 20:
+            return [body[i:i + CAP] for i in range(0, n, CAP)]
+
+
+def split_chunk(c):
+    """기본 색인 청크 하나 → 조각 리스트 (600자 이하면 그대로 1개)"""
+    if not c["기본색인"] or len(c["text"]) <= CAP:
+        return [c]
+    head = split_head_lines(c["text"]) if c["구분"] in TABLE_KINDS else ""
+    rest = c["text"][len(head):].lstrip("\n") if head else c["text"]
+    if len(rest) <= CAP:  # 머리줄을 빼면 600자 이하: 그래도 나눔 기준은 전체 text이므로 균등 분할
+        rest = c["text"]
+        head = ""
+    parts = split_body(rest)
+    m = len(parts)
+    first_line, _, embed_body = c["embed_text"].partition("\n")
+    out = []
+    for k, part in enumerate(parts, 1):
+        tag = f"조각 {k}/{m}" if c.get("부분") else f"{k}/{m}"
+        header = (first_line[:-1] + f" ({tag})]") if first_line.endswith("]") else first_line + f" ({tag})"
+        prefix = head + "\n" if head else ""
+        text = prefix + part
+        d = dict(c)
+        d.update({"id": f"{c['id']}.{k}", "부모id": c["id"], "조각": f"{k}/{m}", "text": text,
+                  "embed_text": header + "\n" + text, "글자수": len(text)})
+        out.append(d)
+    return out
+
+
+VARIANTS = {"exp1a": strip_pua, "exp5a": None}
 
 
 def sha256(path):
@@ -47,8 +137,11 @@ def main():
         sys.exit(f"사용법: exp_variants.py {{{'|'.join(VARIANTS)}}}")
     if sha256(BASE) != BASE_SHA256:
         sys.exit("기준선 chunks.jsonl sha256이 기록과 다릅니다.")
-    fn = VARIANTS[name]
     out_path = ROOT / "data" / f"chunks_{name}.jsonl"
+    if name == "exp5a":
+        main_5a(out_path)
+        return
+    fn = VARIANTS[name]
     changed, per_univ, removed, base_changed = [], Counter(), Counter(), 0
     with BASE.open(encoding="utf-8") as f, out_path.open("w", encoding="utf-8", newline="\n") as o:
         for line in f:
@@ -64,6 +157,29 @@ def main():
     print(f"변형 {name}: 바뀐 청크 {len(changed)}개 (기본 색인 {base_changed}개), 대학별 {dict(per_univ)}, 지운 글자 {dict(removed)}")
     print(f"출력: {out_path.relative_to(ROOT)}  sha256 {sha256(out_path)}")
     (ROOT / "data" / f"chunks_{name}.changed.txt").write_text("\n".join(changed), encoding="utf-8")
+
+
+def main_5a(out_path):
+    n_split = n_pieces = n_base = 0
+    after = []
+    with BASE.open(encoding="utf-8") as f, out_path.open("w", encoding="utf-8", newline="\n") as o:
+        for line in f:
+            c = json.loads(line)
+            n_base += c["기본색인"]
+            parts = split_chunk(c)
+            if len(parts) > 1:
+                n_split += 1
+                n_pieces += len(parts)
+                c["기본색인"], c["제외사유"] = False, "분할됨(조각으로 대체)"
+            o.write(json.dumps(c, ensure_ascii=False) + "\n")
+            if len(parts) > 1:
+                for p in parts:
+                    o.write(json.dumps(p, ensure_ascii=False) + "\n")
+            after.extend(len(p["text"]) for p in parts if p["기본색인"])
+    after.sort()
+    print(f"exp5a: 나뉜 청크 {n_split}개 -> 조각 {n_pieces}개, 기본 색인 {n_base}개 -> {len(after)}개")
+    print(f"기본 색인 text 글자수: 최대 {after[-1]}, 중앙값 {after[len(after)//2]}, 600자 초과 {sum(x > CAP for x in after)}개 (표 머리줄 반복분 포함)")
+    print(f"출력: {out_path.relative_to(ROOT)}  sha256 {sha256(out_path)}")
 
 
 if __name__ == "__main__":

@@ -52,10 +52,15 @@ def best_ranks(order, groups):
     return out
 
 
+def parent(cid):
+    """조각 ID(부모ID.n)는 부모 ID로 본다 (E5a: 자식 중 하나라도 top-5면 부모 적중). 기준선 ID에는 '.'이 없다."""
+    return cid.split(".")[0]
+
+
 def search(col, vec, dev_row):
-    r = col.query(query_embeddings=[vec], n_results=DEPTH, include=["metadatas"])
-    order, metas = r["ids"][0], r["metadatas"][0]
-    return order, run_rag.mixed_flags(dev_row, metas[:run_rag.K])
+    r = col.query(query_embeddings=[vec], n_results=DEPTH, include=["metadatas", "documents"])
+    order, metas, docs = r["ids"][0], r["metadatas"][0], r["documents"][0]
+    return order, run_rag.mixed_flags(dev_row, metas[:run_rag.K]), [len(d) for d in docs[:run_rag.K]]
 
 
 def main():
@@ -79,6 +84,8 @@ def main():
         for c in map(json.loads, Path(args.chunks).open(encoding="utf-8")):
             if base_txt.get(c["id"]) != c["text"]:
                 changed.add(c["id"])
+            if "부모id" in c:  # 나뉜 부모의 정답 청크 표시용
+                changed.add(c["부모id"])
 
     emb = OpenAI().embeddings.create(model=run_rag.EMBED_MODEL, input=[r["질문"] for r in dev])
     vecs = [d.embedding for d in sorted(emb.data, key=lambda d: d.index)]
@@ -90,11 +97,14 @@ def main():
         row = {"id": q["id"], "대학": q["대학"], "학번": q["학번"], "채점유형": q["채점유형"]}
         res = {}
         for k, col in cols.items():
-            order, mix = search(col, vec, q)
+            order_raw, mix, lens = search(col, vec, q)
+            order = [parent(x) for x in order_raw]  # 정답 청크 순위·적중은 부모 ID 기준 (순위는 첫 조각 위치)
             top5 = order[:run_rag.K]
-            res[k] = (order, top5, mix)
+            res[k] = (order, order_raw[:run_rag.K], mix)
             ranks = best_ranks(order, g["groups"])
-            row[f"top5_{k}"] = ";".join(top5)
+            row[f"top5_{k}"] = ";".join(order_raw[:run_rag.K])
+            row[f"top5글자수_{k}"] = sum(lens) / len(lens)
+            row[f"top5부모수_{k}"] = len(set(top5))
             row[f"정답청크순위_{k}"] = ";".join("-" if x is None else str(x) for x in ranks)
             row[f"적중_{k}"] = label(top5, g["groups"], g["alt"], g["해당없음"])
             row[f"혼입_{k}"] = f"{mix['합계혼입']}/{mix['합계대상']}"
@@ -138,6 +148,15 @@ def main():
     L.append(f"| 혼입률 합계 | {sums('전', '혼입')} | {sums('후', '혼입')} |")
     L.append(f"| 혼입률 대학 | {sums('전', '혼입대학')} | {sums('후', '혼입대학')} |")
     L.append(f"| 혼입률 학번 | {sums('전', '혼입학번')} | {sums('후', '혼입학번')} |")
+
+    def avg(side, key):
+        return sum(r[f"{key}_{side}"] for r in rows) / len(rows)
+    L.append(f"| top-5 평균 글자 수 | {avg('전', 'top5글자수'):.0f} | {avg('후', 'top5글자수'):.0f} |")
+    L.append(f"| top-5 안 서로 다른 부모 수(평균) | {avg('전', 'top5부모수'):.2f} | {avg('후', 'top5부모수'):.2f} |")
+    order_rank = {"해당없음": 0, "N": 0, "대체": 1, "부분": 2, "Y": 3}
+    better = [r["id"] for r in rows if r["적중_전"] != "해당없음" and order_rank[r["적중_후"]] > order_rank[r["적중_전"]]]
+    worse = [r["id"] for r in rows if r["적중_전"] != "해당없음" and order_rank[r["적중_후"]] < order_rank[r["적중_전"]]]
+    L += ["", f"- 적중 좋아진 문항 {len(better)}: {', '.join(better)}", f"- 적중 나빠진 문항 {len(worse)}: {', '.join(worse)}"]
     nb = sum(r["top5_바뀜"] == "Y" for r in rows)
     L += ["", f"- top-5가 바뀐 문항 {nb}/{len(rows)} (이월 불가, 답변을 다시 돌려야 하는 문항)",
           f"- top-5에 바뀐 청크가 들어 있는 문항 {sum(r['top5에_바뀐청크'] == 'Y' for r in rows)}",

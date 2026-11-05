@@ -197,7 +197,8 @@ def chunk_header(i, meta):
     edition = meta.get("판본", "")
     if meta.get("판본연도"):
         edition += f"({meta['판본연도']})"
-    return (f"[{i}] {meta['대학']} / {meta['규정명']} / {meta['조항']} / PDF {meta['쪽_PDF']}쪽 / "
+    piece = f" (조각 {meta['조각']})" if meta.get("조각") else ""
+    return (f"[{i}] {meta['대학']} / {meta['규정명']} / {meta['조항']}{piece} / PDF {meta['쪽_PDF']}쪽 / "
             f"판본 {edition or '표기 없음'} / 적용 학번 {applies}")
 
 
