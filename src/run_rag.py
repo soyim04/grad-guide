@@ -148,13 +148,14 @@ def log_usage(task, model, tin, tout, cost, memo):
                     "입력 토큰": tin, "출력 토큰": tout, "비용(달러)": f"{cost:.5f}", "메모": memo})
 
 
-def result_base(smoke):
-    name = f"{date.today().isoformat()}_dev_base-rag_{MODEL}" + ("_smoke" if smoke else "")
+def result_base(smoke, tag=""):
+    name = f"{date.today().isoformat()}_dev_base-rag_{MODEL}" + ("_smoke" if smoke else "") + (f"_{tag}" if tag else "")
     return RESULTS / name
 
 
-def find_answer_file(smoke):
-    pat = f"*_dev_base-rag_{MODEL}" + ("_smoke" if smoke else "") + ".csv"
+def find_answer_file(smoke, tag=""):
+    """tag가 없으면 기준선 파일(태그 없는 이름)만 찾는다. 실험 파일은 --tag로 고른다."""
+    pat = f"*_dev_base-rag_{MODEL}" + ("_smoke" if smoke else "") + (f"_{tag}" if tag else "") + ".csv"
     files = sorted(RESULTS.glob(pat))
     if not files:
         sys.exit(f"답변 파일이 없습니다: eval/results/{pat}")
@@ -286,13 +287,13 @@ def cmd_answer(args):
         })
         print(f"  {r['id']} 인용 {cited} 혼입 {mix['합계혼입']}/{mix['합계대상']}", flush=True)
 
-    base = result_base(bool(args.limit))
+    base = result_base(bool(args.limit), args.tag)
     RESULTS.mkdir(parents=True, exist_ok=True)
     path = base.with_suffix(".csv")
     write_csv(path, out, list(out[0]))
     cost = tin_sum / 1e6 * PRICE_IN + tout_sum / 1e6 * PRICE_OUT
     emb_cost = emb_tokens / 1e6 * EMBED_PRICE
-    memo = f"기본 RAG 개발용 {len(rows)}문항, k={K}, {PROMPT_VERSION}" + (" (smoke)" if args.limit else "")
+    memo = f"기본 RAG 개발용 {len(rows)}문항, k={K}, {PROMPT_VERSION}" + (" (smoke)" if args.limit else "") + (f" [{args.tag}]" if args.tag else "")
     log_usage("rag_answer", MODEL, tin_sum, tout_sum, cost, memo)
     log_usage("rag_query_embed", EMBED_MODEL, emb_tokens, 0, emb_cost, memo)
     print(f"저장: {path.relative_to(ROOT)}\n답변 토큰 {tin_sum:,}/{tout_sum:,} ${cost:.5f}, 질문 임베딩 {emb_tokens}토큰 ${emb_cost:.6f}")
@@ -333,7 +334,7 @@ def attention(q, a, verdict):
 
 
 def cmd_judge(args):
-    ans_path = find_answer_file(args.smoke)
+    ans_path = find_answer_file(args.smoke, args.tag)
     answers = load_csv(ans_path)
     dev = {r["id"]: r for r in load_csv(DEV_CSV)}
     all_chunks = {}
@@ -346,9 +347,10 @@ def cmd_judge(args):
     chat = Chat(OpenAI())
     out, tin_sum, tout_sum = [], 0, 0
     human = {}  # 이전 판정관 버전의 채점 파일이 있으면 사람 판정 열을 그대로 가져온다
-    for prev in sorted(ans_path.parent.glob(ans_path.stem + "_grade-v*.csv")):
-        if not prev.stem.endswith(GRADE_TAG):
-            human = {r["id"]: r for r in load_csv(prev)}
+    if not args.tag and not args.out_suffix:  # 기준선 답변일 때만 (실험 답변에는 기준선 사람 판정을 붙이지 않는다)
+        for prev in sorted(ans_path.parent.glob(ans_path.stem + "_grade-v*.csv")):
+            if re.fullmatch(r"_grade-v\d+", prev.stem[len(ans_path.stem):]) and not prev.stem.endswith(GRADE_TAG):
+                human = {r["id"]: r for r in load_csv(prev)}
     for a in answers:
         q = dev[a["id"]]
         nums = [n for n in a["인용"].split(";") if n]
@@ -378,10 +380,10 @@ def cmd_judge(args):
         })
         print(f"  {a['id']} {j['verdict']} 인용 {j['인용일치']}", flush=True)
 
-    path = ans_path.with_name(ans_path.stem + f"_{GRADE_TAG}.csv")
+    path = ans_path.with_name(ans_path.stem + f"_{GRADE_TAG}{args.out_suffix}.csv")
     write_csv(path, out, list(out[0]))
     cost = tin_sum / 1e6 * PRICE_IN + tout_sum / 1e6 * PRICE_OUT
-    log_usage("rag_judge", JUDGE_MODEL, tin_sum, tout_sum, cost, f"판정관 {JUDGE_VERSION}, {len(out)}문항" + (" (smoke)" if args.smoke else ""))
+    log_usage("rag_judge", JUDGE_MODEL, tin_sum, tout_sum, cost, f"판정관 {JUDGE_VERSION}, {len(out)}문항" + (" (smoke)" if args.smoke else "") + (f" [{args.tag}{args.out_suffix}]" if args.tag or args.out_suffix else ""))
     print(f"저장: {path.relative_to(ROOT)}\n판정 토큰 {tin_sum:,}/{tout_sum:,} ${cost:.5f}")
     print(f"사람 확인 우선 {sum(1 for o in out if o['사람확인_우선'])}문항 (51문항 전부 최종 판정은 사람이 한다)")
 
@@ -393,7 +395,7 @@ def frac(n, d):
 
 
 def cmd_report(args):
-    ans_path = find_answer_file(args.smoke)
+    ans_path = find_answer_file(args.smoke, args.tag)
     grade = load_csv(ans_path.with_name(ans_path.stem + f"_grade-{args.grade}.csv"))
     answers = {a["id"]: a for a in load_csv(ans_path)}
     blank = [r for r in grade if not r["최종판정"].strip()]
@@ -473,10 +475,14 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("answer")
     a.add_argument("--limit", type=int, default=0, help="앞에서 N문항만 (시험용, 파일명에 _smoke)")
+    a.add_argument("--tag", default="", help="실험 이름(파일명에 붙음, 기준선 결과를 덮어쓰지 않음)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")
+    j.add_argument("--tag", default="", help="판정할 답변 파일의 실험 이름")
+    j.add_argument("--out-suffix", default="", help="채점 파일 이름 끝에 붙임 (같은 답변을 다시 판정할 때)")
     r = sub.add_parser("report")
     r.add_argument("--smoke", action="store_true")
+    r.add_argument("--tag", default="", help="보고할 답변 파일의 실험 이름")
     r.add_argument("--grade", default=GRADE_TAG.split("-")[1], help="읽을 채점 파일 버전 (v1, v2)")
     r.add_argument("--allow-unfinished", action="store_true", help="최종판정이 빈 문항을 빼고 계산")
     args = p.parse_args()
