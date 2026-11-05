@@ -33,6 +33,7 @@ import openai
 from dotenv import load_dotenv
 from openai import OpenAI
 
+import criteria_lookup
 import query_expand
 import query_filter
 
@@ -76,6 +77,22 @@ ANSWER_SCHEMA = {
     "required": ["답변", "인용"],
     "additionalProperties": False,
 }
+
+LOOKUP_VERSION = "lookup-v1"
+LOOKUP_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·한밭·목원)의 졸업요건 안내 도우미입니다.
+아래 [기준표 조회 결과]에 적힌 행만으로, 한국어로 쉽게 답하세요.
+
+규칙
+1. 값·단위·비교(이상/이내)는 행에 적힌 그대로 말한다. 합·차·비교 같은 계산은 하지 않고 행의 값만 말한다.
+2. 행의 조건·비고에 있는 내용 중 질문과 관련된 것(예외 대상, 초과 신청 조건, 다른 대상의 값 등)은 답에 포함한다. 행을 관리하려고 적은 메모(개정 전 값 미확보, 확인함 등)는 말하지 않는다.
+3. 상태가 '잠정'인 행의 값을 말할 때는 '잠정'이라고 밝힌다. 상태가 '확인불가'면 확인 불가라고, '없음'이면 그 조건이 없다고 출처 조문을 들어 말한다.
+4. 학번이 여러 개면 학번마다 나눠 답한다. 학번이 없고 행의 입학년도 구간이 다르면 구간별로 말한다.
+5. 숫자나 조건마다 행 번호를 [1]처럼 붙이고, 답변 마지막에 인용한 행의 출처(규정·조항·쪽)를 행에 적힌 그대로 한 줄로 적는다.
+6. 행에 없는 내용은 지어내지 말고 "확인 불가"라고 한다.
+
+출력 필드
+- 답변: 사용자에게 보여 줄 답변 ([1] 같은 행 번호 포함)
+- 인용: 답변에 실제로 쓴 행 번호 목록"""
 
 JUDGE_SYSTEM = """너는 대학 졸업요건 안내 챗봇의 답변을 채점하는 채점자다. [문항]의 기준으로 [챗봇 답변]을 판정하고, [인용한 근거]가 답변을 뒷받침하는지도 본다.
 
@@ -276,6 +293,29 @@ def cmd_answer(args):
     chat = Chat(client)
     out, tin_sum, tout_sum = [], 0, 0
     for r, vec, sq in zip(rows, q_vecs, search_q):
+        if args.lookup:
+            result, why = criteria_lookup.lookup(r["질문"])
+            if result is not None:  # 실험 8: 숫자 질문은 기준표 조회, LLM은 설명만
+                context, row_ids = criteria_lookup.build_context(result)
+                ans, tin, tout = chat.json(MODEL, LOOKUP_SYSTEM, "[기준표 조회 결과]" + chr(10) + context + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"], ANSWER_SCHEMA, "answer")
+                tin_sum += tin
+                tout_sum += tout
+                cited = [n for n in ans["인용"] if 1 <= n <= len(row_ids)]
+                out.append({
+                    "id": r["id"], "질문": r["질문"], "답변": ans["답변"],
+                    "인용": ";".join(map(str, cited)), "인용청크": ";".join(row_ids[n - 1] for n in cited),
+                    "검색청크": ";".join(row_ids), "검색거리": "",
+                    "검색근거표시": " | ".join(f"{criteria_lookup.BY_ID[i]['대학']} 기준표 {criteria_lookup.BY_ID[i]['항목']} {criteria_lookup.BY_ID[i]['대상']}" for i in row_ids),
+                    "적중후보": "", "혼입_대학": "0/0", "혼입_학번": "0/0", "혼입_합계": "0/0",
+                    "필터": "", "검색질문": "(criteria 조회)",
+                    "모델": MODEL, "프롬프트버전": LOOKUP_VERSION, "프롬프트해시": prompt_hash(LOOKUP_SYSTEM),
+                    "k": "", "컬렉션": "criteria-lookup", "chunks_sha256": file_sha256(ROOT / "data" / "criteria.csv"),
+                    "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
+                    "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
+                })
+                print(f"  {r['id']} 조회 행 {row_ids} 인용 {cited}", flush=True)
+                continue
+            print(f"  {r['id']} RAG 폴백({why})", flush=True)
         where = query_filter.where_for(r["질문"]) if args.filter else None
         hit = col.query(query_embeddings=[vec], n_results=K, where=where, include=["documents", "metadatas", "distances"])
         ids, docs, metas, dists = hit["ids"][0], hit["documents"][0], hit["metadatas"][0], hit["distances"][0]
@@ -359,6 +399,11 @@ def cmd_judge(args):
         c = json.loads(line)
         if c["id"] in wanted:
             all_chunks[c["id"]] = c
+    for cid in wanted:  # 실험 8: 조회 경로의 인용은 criteria 행
+        if cid in criteria_lookup.BY_ID:
+            row = criteria_lookup.BY_ID[cid]
+            all_chunks[cid] = {"대학": row["대학"], "규정명": row["출처조항"], "조항": f"기준표 {row['항목']} / {row['대상']}",
+                               "text": criteria_lookup.row_text(row)}
 
     chat = Chat(OpenAI())
     out, tin_sum, tout_sum = [], 0, 0
@@ -496,6 +541,7 @@ def main():
     a.add_argument("--chunks", default="", help="이 컬렉션을 만든 청크 파일 (sha256 기록용, 기본: 기준선)")
     a.add_argument("--filter", action="store_true", help="질문에서 뽑은 대학·학번으로 메타데이터 필터 (실험 2)")
     a.add_argument("--expand", action="store_true", help="검색용 질문에 동의어 덧붙임 (실험 3)")
+    a.add_argument("--lookup", action="store_true", help="숫자 질문은 criteria 조회로 답변 (실험 8)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")
