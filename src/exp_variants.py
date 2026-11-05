@@ -97,11 +97,24 @@ def split_body(body):
             return [body[i:i + CAP] for i in range(0, n, CAP)]
 
 
-def split_chunk(c):
+def split_head_lines_v2(text):
+    """5a-2 머리줄: 맨 앞에서 연속된 줄 중 `열:` 줄, 또는 짧은(40자 이하) 제목 줄(숫자 없음·'학점' 없음)만. 첫 불합격 줄에서 멈춤. 최대 6줄·200자."""
+    head, size = [], 0
+    for ln in text.splitlines():
+        t = ln.strip()
+        ok = t.startswith("열:") or (0 < len(t) <= 40 and not re.search(r"\d", t) and "학점" not in t)
+        if not ok or len(head) >= HEAD_MAX_LINES or size + len(ln) + 1 > HEAD_MAX_CHARS:
+            break
+        head.append(ln)
+        size += len(ln) + 1
+    return chr(10).join(head)
+
+
+def split_chunk(c, head_fn=None):
     """기본 색인 청크 하나 → 조각 리스트 (600자 이하면 그대로 1개)"""
     if not c["기본색인"] or len(c["text"]) <= CAP:
         return [c]
-    head = split_head_lines(c["text"]) if c["구분"] in TABLE_KINDS else ""
+    head = (head_fn or split_head_lines)(c["text"]) if c["구분"] in TABLE_KINDS else ""
     rest = c["text"][len(head):].lstrip("\n") if head else c["text"]
     if len(rest) <= CAP:  # 머리줄을 빼면 600자 이하: 그래도 나눔 기준은 전체 text이므로 균등 분할
         rest = c["text"]
@@ -122,7 +135,7 @@ def split_chunk(c):
     return out
 
 
-VARIANTS = {"exp1a": strip_pua, "exp5a": None}
+VARIANTS = {"exp1a": strip_pua, "exp5a": None, "exp5a2": None}
 
 
 def sha256(path):
@@ -138,8 +151,8 @@ def main():
     if sha256(BASE) != BASE_SHA256:
         sys.exit("기준선 chunks.jsonl sha256이 기록과 다릅니다.")
     out_path = ROOT / "data" / f"chunks_{name}.jsonl"
-    if name == "exp5a":
-        main_5a(out_path)
+    if name in ("exp5a", "exp5a2"):
+        main_5a(out_path, split_head_lines_v2 if name == "exp5a2" else None)
         return
     fn = VARIANTS[name]
     changed, per_univ, removed, base_changed = [], Counter(), Counter(), 0
@@ -159,14 +172,14 @@ def main():
     (ROOT / "data" / f"chunks_{name}.changed.txt").write_text("\n".join(changed), encoding="utf-8")
 
 
-def main_5a(out_path):
+def main_5a(out_path, head_fn=None):
     n_split = n_pieces = n_base = 0
     after = []
     with BASE.open(encoding="utf-8") as f, out_path.open("w", encoding="utf-8", newline="\n") as o:
         for line in f:
             c = json.loads(line)
             n_base += c["기본색인"]
-            parts = split_chunk(c)
+            parts = split_chunk(c, head_fn)
             if len(parts) > 1:
                 n_split += 1
                 n_pieces += len(parts)
@@ -177,7 +190,7 @@ def main_5a(out_path):
                     o.write(json.dumps(p, ensure_ascii=False) + "\n")
             after.extend(len(p["text"]) for p in parts if p["기본색인"])
     after.sort()
-    print(f"exp5a: 나뉜 청크 {n_split}개 -> 조각 {n_pieces}개, 기본 색인 {n_base}개 -> {len(after)}개")
+    print(f"exp5a/5a2: 나뉜 청크 {n_split}개 -> 조각 {n_pieces}개, 기본 색인 {n_base}개 -> {len(after)}개")
     print(f"기본 색인 text 글자수: 최대 {after[-1]}, 중앙값 {after[len(after)//2]}, 600자 초과 {sum(x > CAP for x in after)}개 (표 머리줄 반복분 포함)")
     print(f"출력: {out_path.relative_to(ROOT)}  sha256 {sha256(out_path)}")
 

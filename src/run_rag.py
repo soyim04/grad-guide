@@ -33,6 +33,8 @@ import openai
 from dotenv import load_dotenv
 from openai import OpenAI
 
+import query_filter
+
 ROOT = Path(__file__).resolve().parent.parent
 DEV_CSV = ROOT / "eval" / "questions_dev.csv"  # 개발용 51문항만. 홀드아웃은 열지 않는다
 CHUNKS = ROOT / "data" / "chunks.jsonl"
@@ -272,7 +274,8 @@ def cmd_answer(args):
     chat = Chat(client)
     out, tin_sum, tout_sum = [], 0, 0
     for r, vec in zip(rows, q_vecs):
-        hit = col.query(query_embeddings=[vec], n_results=K, include=["documents", "metadatas", "distances"])
+        where = query_filter.where_for(r["질문"]) if args.filter else None
+        hit = col.query(query_embeddings=[vec], n_results=K, where=where, include=["documents", "metadatas", "distances"])
         ids, docs, metas, dists = hit["ids"][0], hit["documents"][0], hit["metadatas"][0], hit["distances"][0]
         context = "\n\n".join(f"{chunk_header(i, m)}\n{d}" for i, (m, d) in enumerate(zip(metas, docs), 1))
         user = f"[근거]\n{context}\n\n[질문]\n{r['질문']}"
@@ -289,6 +292,7 @@ def cmd_answer(args):
             "적중후보": ";".join("Y" if hit_candidate(r["근거"], m) else "N" for m in metas),
             "혼입_대학": f"{mix['대학혼입']}/{mix['대학대상']}", "혼입_학번": f"{mix['학번혼입']}/{mix['학번대상']}",
             "혼입_합계": f"{mix['합계혼입']}/{mix['합계대상']}",
+            "필터": json.dumps(where, ensure_ascii=False) if args.filter else "",
             "모델": MODEL, "프롬프트버전": PROMPT_VERSION, "프롬프트해시": prompt_hash(ANSWER_SYSTEM),
             "k": K, "컬렉션": collection, "chunks_sha256": sha,
             "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
@@ -487,6 +491,7 @@ def main():
     a.add_argument("--tag", default="", help="실험 이름(파일명에 붙음, 기준선 결과를 덮어쓰지 않음)")
     a.add_argument("--collection", default="", help="검색할 Chroma 컬렉션 (기본: 기준선)")
     a.add_argument("--chunks", default="", help="이 컬렉션을 만든 청크 파일 (sha256 기록용, 기본: 기준선)")
+    a.add_argument("--filter", action="store_true", help="질문에서 뽑은 대학·학번으로 메타데이터 필터 (실험 2)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")

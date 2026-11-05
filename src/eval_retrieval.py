@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 _spec = importlib.util.spec_from_file_location("run_rag", ROOT / "src" / "run_rag.py")
 run_rag = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(run_rag)
+import query_filter  # noqa: E402
 
 BASE_COLLECTION = "base-text-embedding-3-small"
 DEPTH = 300
@@ -57,8 +58,8 @@ def parent(cid):
     return cid.split(".")[0]
 
 
-def search(col, vec, dev_row):
-    r = col.query(query_embeddings=[vec], n_results=DEPTH, include=["metadatas", "documents"])
+def search(col, vec, dev_row, where=None):
+    r = col.query(query_embeddings=[vec], n_results=DEPTH, where=where, include=["metadatas", "documents"])
     order, metas, docs = r["ids"][0], r["metadatas"][0], r["documents"][0]
     return order, run_rag.mixed_flags(dev_row, metas[:run_rag.K]), [len(d) for d in docs[:run_rag.K]]
 
@@ -69,6 +70,7 @@ def main():
     ap.add_argument("--collection", required=True)
     ap.add_argument("--baseline", default=BASE_COLLECTION)
     ap.add_argument("--tag", required=True)
+    ap.add_argument("--filter", action="store_true", help="후 컬렉션 검색에 질문에서 뽑은 대학·학번 필터를 건다 (실험 2)")
     ap.add_argument("--chunks", default="", help="실험 청크 파일 (본문이 바뀐 청크를 표시하는 데 씀)")
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
@@ -96,8 +98,10 @@ def main():
         g = gold[q["id"]]
         row = {"id": q["id"], "대학": q["대학"], "학번": q["학번"], "채점유형": q["채점유형"]}
         res = {}
+        where = query_filter.where_for(q["질문"]) if args.filter else None
+        row["필터"] = json.dumps(where, ensure_ascii=False) if where else ""
         for k, col in cols.items():
-            order_raw, mix, lens = search(col, vec, q)
+            order_raw, mix, lens = search(col, vec, q, where if k == "후" else None)
             order = [parent(x) for x in order_raw]  # 정답 청크 순위·적중은 부모 ID 기준 (순위는 첫 조각 위치)
             top5 = order[:run_rag.K]
             res[k] = (order, order_raw[:run_rag.K], mix)

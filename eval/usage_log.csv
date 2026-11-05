@@ -27,3 +27,7 @@
 2026-11-05T12:25:26,diag_embed,text-embedding-3-small,2796,0,0.00006,1b 기각 진단: 질문·시험 조각 임베딩 (색인 저장 없음)
 2026-11-05T12:30:05,build_index,text-embedding-3-small,617948,0,0.01236,"실험 색인 exp5a-text-embedding-3-small, 청크 2623개 중 새로 임베딩 1027개(기준선 재사용 1596개), chunks_exp5a.jsonl"
 2026-11-05T12:30:12,retrieval_eval,text-embedding-3-small,1842,0,0.00004,"exp5a 검색 지표 비교, 개발용 51문항 질문 임베딩"
+2026-11-05T15:09:01,retrieval_eval,text-embedding-3-small,1842,0,0.00004,"exp2 검색 지표 비교, 개발용 51문항 질문 임베딩"
+2026-11-05T15:11:37,rag_answer,gpt-6-luna,97936,11385,0.01549,"기본 RAG 개발용 43문항, k=5, answer-v1 [e2]"
+2026-11-05T15:11:37,rag_query_embed,text-embedding-3-small,1648,0,0.00003,"기본 RAG 개발용 43문항, k=5, answer-v1 [e2]"
+2026-11-05T15:14:37,rag_judge,gpt-6-luna,68178,13698,0.01367,"판정관 judge-v2, 43문항 [e2]"
