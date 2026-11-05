@@ -24,3 +24,4 @@
 2026-11-05T11:26:07,rag_answer,gpt-6-luna,3218,273,0.00046,"기본 RAG 개발용 1문항, k=5, answer-v1 [e1a]"
 2026-11-05T11:26:07,rag_query_embed,text-embedding-3-small,56,0,0.00000,"기본 RAG 개발용 1문항, k=5, answer-v1 [e1a]"
 2026-11-05T11:26:13,rag_judge,gpt-6-luna,1870,151,0.00026,"판정관 judge-v2, 1문항 [e1a]"
+2026-11-05T12:25:26,diag_embed,text-embedding-3-small,2796,0,0.00006,1b 기각 진단: 질문·시험 조각 임베딩 (색인 저장 없음)
