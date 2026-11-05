@@ -246,15 +246,23 @@ def hit_candidate(evidence, meta):
 # ---------- answer ----------
 
 def cmd_answer(args):
-    sha = file_sha256(CHUNKS)
-    if sha != CHUNKS_SHA256:
+    chunks_path = Path(args.chunks) if args.chunks else CHUNKS
+    collection = args.collection or COLLECTION
+    sha = file_sha256(chunks_path)
+    if chunks_path == CHUNKS and sha != CHUNKS_SHA256:
         sys.exit(f"chunks.jsonl sha256이 기록과 다릅니다 ({sha}). 색인이 낡았을 수 있어 중단합니다.")
     rows = load_csv(DEV_CSV)
+    if args.ids:
+        want = args.ids.split(",")
+        unknown = [i for i in want if i not in {r["id"] for r in rows}]
+        if unknown:
+            sys.exit(f"개발용 평가셋에 없는 ID: {unknown}")
+        rows = [r for r in rows if r["id"] in want]
     if args.limit:
         rows = rows[:args.limit]
     client = OpenAI()
-    col = chromadb.PersistentClient(path=str(CHROMA_DIR)).get_collection(COLLECTION)
-    print(f"컬렉션 {COLLECTION}: {col.count()}개, 질문 {len(rows)}개, k={K}")
+    col = chromadb.PersistentClient(path=str(CHROMA_DIR)).get_collection(collection)
+    print(f"컬렉션 {collection}: {col.count()}개, 질문 {len(rows)}개, k={K}")
 
     emb = client.embeddings.create(model=EMBED_MODEL, input=[r["질문"] for r in rows])
     q_vecs = [d.embedding for d in sorted(emb.data, key=lambda d: d.index)]
@@ -281,7 +289,7 @@ def cmd_answer(args):
             "혼입_대학": f"{mix['대학혼입']}/{mix['대학대상']}", "혼입_학번": f"{mix['학번혼입']}/{mix['학번대상']}",
             "혼입_합계": f"{mix['합계혼입']}/{mix['합계대상']}",
             "모델": MODEL, "프롬프트버전": PROMPT_VERSION, "프롬프트해시": prompt_hash(ANSWER_SYSTEM),
-            "k": K, "컬렉션": COLLECTION, "chunks_sha256": sha,
+            "k": K, "컬렉션": collection, "chunks_sha256": sha,
             "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
             "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
         })
@@ -339,7 +347,7 @@ def cmd_judge(args):
     dev = {r["id"]: r for r in load_csv(DEV_CSV)}
     all_chunks = {}
     wanted = {cid for a in answers for cid in a["인용청크"].split(";") if cid}
-    for line in CHUNKS.open(encoding="utf-8"):
+    for line in (Path(args.chunks) if args.chunks else CHUNKS).open(encoding="utf-8"):
         c = json.loads(line)
         if c["id"] in wanted:
             all_chunks[c["id"]] = c
@@ -476,9 +484,13 @@ def main():
     a = sub.add_parser("answer")
     a.add_argument("--limit", type=int, default=0, help="앞에서 N문항만 (시험용, 파일명에 _smoke)")
     a.add_argument("--tag", default="", help="실험 이름(파일명에 붙음, 기준선 결과를 덮어쓰지 않음)")
+    a.add_argument("--collection", default="", help="검색할 Chroma 컬렉션 (기본: 기준선)")
+    a.add_argument("--chunks", default="", help="이 컬렉션을 만든 청크 파일 (sha256 기록용, 기본: 기준선)")
+    a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")
     j.add_argument("--tag", default="", help="판정할 답변 파일의 실험 이름")
+    j.add_argument("--chunks", default="", help="답변에 쓴 청크 파일 (인용 청크 본문을 읽음, 기본: 기준선)")
     j.add_argument("--out-suffix", default="", help="채점 파일 이름 끝에 붙임 (같은 답변을 다시 판정할 때)")
     r = sub.add_parser("report")
     r.add_argument("--smoke", action="store_true")

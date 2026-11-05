@@ -6,10 +6,15 @@
   학번 구간은 정수(시작 비면 0, 끝 비면 9999, 판별 문서가 아니면 둘 다 0/9999)
 - 사용 토큰과 비용은 eval/usage_log.csv에 쌓는다 (1차와 같은 형식)
 
+실험용 색인 (6단계): 규칙을 적용한 청크 파일로 새 컬렉션을 만들고 기준선 컬렉션은 건드리지 않는다.
+  --chunks data/chunks_exp1a.jsonl --collection exp1a-text-embedding-3-small --reuse-from base-text-embedding-3-small
+  --reuse-from: 기준선 컬렉션에서 embed_text가 같은 청크의 임베딩을 그대로 복사하고, 바뀐 청크만 새로 임베딩한다.
+
 사용법
     .venv\\Scripts\\python.exe src\\build_index.py
 """
 
+import argparse
 import csv
 import json
 import sys
@@ -67,26 +72,49 @@ def log_usage(row):
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--chunks", default=str(CHUNKS))
+    ap.add_argument("--collection", default=COLLECTION)
+    ap.add_argument("--reuse-from", default="")
+    args = ap.parse_args()
+    chunks_path, collection = Path(args.chunks), args.collection
+    if chunks_path.resolve() != CHUNKS.resolve() and collection == COLLECTION:
+        sys.exit("기준선 컬렉션 이름으로 다른 청크 파일을 색인할 수 없습니다. --collection을 바꾸세요.")
     load_dotenv(ROOT / ".env")
-    chunks = [c for c in map(json.loads, CHUNKS.open(encoding="utf-8")) if c["기본색인"]]
-    print(f"기본색인=true 청크 {len(chunks)}개 임베딩")
-    vectors, tokens = embed_all(OpenAI(), [c["embed_text"] for c in chunks])
-
+    chunks = [c for c in map(json.loads, chunks_path.open(encoding="utf-8")) if c["기본색인"]]
     db = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    if COLLECTION in [c.name for c in db.list_collections()]:
-        db.delete_collection(COLLECTION)
-    col = db.create_collection(COLLECTION, embedding_function=None, metadata={"hnsw:space": "cosine"})
+
+    vectors = [None] * len(chunks)
+    reused = 0
+    if args.reuse_from:
+        base_embed = {c["id"]: c["embed_text"] for c in map(json.loads, CHUNKS.open(encoding="utf-8")) if c["기본색인"]}
+        got = db.get_collection(args.reuse_from).get(ids=[c["id"] for c in chunks if c["id"] in base_embed], include=["embeddings"])
+        base_vec = dict(zip(got["ids"], got["embeddings"]))
+        for k, c in enumerate(chunks):
+            if c["id"] in base_vec and base_embed.get(c["id"]) == c["embed_text"]:
+                vectors[k] = [float(x) for x in base_vec[c["id"]]]
+                reused += 1
+    todo = [k for k, v in enumerate(vectors) if v is None]
+    print(f"기본색인=true 청크 {len(chunks)}개: 기준선 임베딩 재사용 {reused}개, 새로 임베딩 {len(todo)}개")
+    new_vecs, tokens = embed_all(OpenAI(), [chunks[k]["embed_text"] for k in todo]) if todo else ([], 0)
+    for k, v in zip(todo, new_vecs):
+        vectors[k] = v
+
+    if collection in [c.name for c in db.list_collections()]:
+        db.delete_collection(collection)
+    col = db.create_collection(collection, embedding_function=None, metadata={"hnsw:space": "cosine"})
     for s in range(0, len(chunks), 500):
         part = chunks[s:s + 500]
         col.add(ids=[c["id"] for c in part], documents=[c["text"] for c in part],
                 embeddings=vectors[s:s + 500], metadatas=[to_metadata(c) for c in part])
-    print(f"컬렉션 {COLLECTION}: {col.count()}개 저장")
+    print(f"컬렉션 {collection}: {col.count()}개 저장")
 
     cost = tokens / 1_000_000 * EMBED_PRICE_PER_1M
     log_usage({
         "시각": datetime.now().isoformat(timespec="seconds"), "작업": "build_index", "모델": EMBED_MODEL,
         "입력 토큰": tokens, "출력 토큰": 0, "비용(달러)": f"{cost:.5f}",
-        "메모": f"기본 RAG 색인, 청크 {len(chunks)}개 (기본색인=true만)",
+        "메모": (f"기본 RAG 색인, 청크 {len(chunks)}개 (기본색인=true만)" if collection == COLLECTION else
+                f"실험 색인 {collection}, 청크 {len(chunks)}개 중 새로 임베딩 {len(todo)}개(기준선 재사용 {reused}개), {chunks_path.name}"),
     })
     print(f"임베딩 토큰 {tokens:,}개, 비용 약 ${cost:.5f} → eval/usage_log.csv")
 

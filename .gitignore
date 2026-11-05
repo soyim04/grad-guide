@@ -223,6 +223,7 @@ chroma_db/
 data/raw/
 data/chunks/
 data/chunks.jsonl
+data/chunks_*.jsonl
 data/service_log.db
 data/service_log.db-journal
 eval/results/raw/
