@@ -31,3 +31,8 @@
 2026-11-05T15:11:37,rag_answer,gpt-6-luna,97936,11385,0.01549,"기본 RAG 개발용 43문항, k=5, answer-v1 [e2]"
 2026-11-05T15:11:37,rag_query_embed,text-embedding-3-small,1648,0,0.00003,"기본 RAG 개발용 43문항, k=5, answer-v1 [e2]"
 2026-11-05T15:14:37,rag_judge,gpt-6-luna,68178,13698,0.01367,"판정관 judge-v2, 43문항 [e2]"
+2026-11-05T15:48:51,retrieval_eval,text-embedding-3-small,3891,0,0.00008,"exp3 검색 지표 비교, 개발용 51문항 질문 임베딩"
+2026-11-05T15:49:15,retrieval_eval,text-embedding-3-small,3891,0,0.00008,"exp3 검색 지표 비교, 개발용 51문항 질문 임베딩"
+2026-11-05T15:50:33,rag_answer,gpt-6-luna,37610,5195,0.00636,"기본 RAG 개발용 15문항, k=5, answer-v1 [e3]"
+2026-11-05T15:50:33,rag_query_embed,text-embedding-3-small,807,0,0.00002,"기본 RAG 개발용 15문항, k=5, answer-v1 [e3]"
+2026-11-05T15:51:28,rag_judge,gpt-6-luna,25368,4125,0.00460,"판정관 judge-v2, 15문항 [e3]"

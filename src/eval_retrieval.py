@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "src"))
 _spec = importlib.util.spec_from_file_location("run_rag", ROOT / "src" / "run_rag.py")
 run_rag = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(run_rag)
+import query_expand  # noqa: E402
 import query_filter  # noqa: E402
 
 BASE_COLLECTION = "base-text-embedding-3-small"
@@ -71,6 +72,8 @@ def main():
     ap.add_argument("--baseline", default=BASE_COLLECTION)
     ap.add_argument("--tag", required=True)
     ap.add_argument("--filter", action="store_true", help="후 컬렉션 검색에 질문에서 뽑은 대학·학번 필터를 건다 (실험 2)")
+    ap.add_argument("--base-filter", action="store_true", help="전 컬렉션 검색에도 같은 필터를 건다 (기준선이 E2일 때)")
+    ap.add_argument("--expand", action="store_true", help="후 검색에 동의어 확장 질문을 쓴다 (실험 3)")
     ap.add_argument("--chunks", default="", help="실험 청크 파일 (본문이 바뀐 청크를 표시하는 데 씀)")
     args = ap.parse_args()
     load_dotenv(ROOT / ".env")
@@ -89,19 +92,29 @@ def main():
             if "부모id" in c:  # 나뉜 부모의 정답 청크 표시용
                 changed.add(c["부모id"])
 
-    emb = OpenAI().embeddings.create(model=run_rag.EMBED_MODEL, input=[r["질문"] for r in dev])
+    client = OpenAI()
+    emb = client.embeddings.create(model=run_rag.EMBED_MODEL, input=[r["질문"] for r in dev])
     vecs = [d.embedding for d in sorted(emb.data, key=lambda d: d.index)]
     tokens = emb.usage.total_tokens
+    vecs_after = vecs
+    if args.expand:
+        exp = [query_expand.expand(r["질문"]) for r in dev]
+        e2 = client.embeddings.create(model=run_rag.EMBED_MODEL, input=exp)
+        vecs_after = [d.embedding for d in sorted(e2.data, key=lambda d: d.index)]
+        # 확장되지 않은 질문은 같은 벡터를 그대로 쓴다 (임베딩 API 미세 차이가 순위를 흔들지 않게)
+        vecs_after = [va if ex != r["질문"] else v for va, ex, r, v in zip(vecs_after, exp, dev, vecs)]
+        tokens += e2.usage.total_tokens
 
     rows = []
-    for q, vec in zip(dev, vecs):
+    for q, vec, vec_after in zip(dev, vecs, vecs_after):
         g = gold[q["id"]]
         row = {"id": q["id"], "대학": q["대학"], "학번": q["학번"], "채점유형": q["채점유형"]}
         res = {}
         where = query_filter.where_for(q["질문"]) if args.filter else None
         row["필터"] = json.dumps(where, ensure_ascii=False) if where else ""
+        row["검색질문"] = query_expand.expand(q["질문"]) if args.expand else ""
         for k, col in cols.items():
-            order_raw, mix, lens = search(col, vec, q, where if k == "후" else None)
+            order_raw, mix, lens = search(col, vec_after if k == "후" else vec, q, where if (k == "후" or args.base_filter) else None)
             order = [parent(x) for x in order_raw]  # 정답 청크 순위·적중은 부모 ID 기준 (순위는 첫 조각 위치)
             top5 = order[:run_rag.K]
             res[k] = (order, order_raw[:run_rag.K], mix)
