@@ -191,8 +191,11 @@ def chunk_header(i, meta):
         applies = "표기 없음"
     else:
         applies = f"{s or ''}~{'' if e == 9999 else e}학번" if s != e else f"{s}학번"
+    edition = meta.get("판본", "")
+    if meta.get("판본연도"):
+        edition += f"({meta['판본연도']})"
     return (f"[{i}] {meta['대학']} / {meta['규정명']} / {meta['조항']} / PDF {meta['쪽_PDF']}쪽 / "
-            f"판본 {meta['판본']}({meta['판본연도']}) / 적용 학번 {applies}")
+            f"판본 {edition or '표기 없음'} / 적용 학번 {applies}")
 
 
 def student_numbers(cell):
