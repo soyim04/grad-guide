@@ -78,6 +78,24 @@ ANSWER_SCHEMA = {
     "additionalProperties": False,
 }
 
+PROMPT_VERSION_V2 = "answer-v2"  # 실험 9: 규칙 2 강화(범위 밖 학번 단정 금지) · 6 확정 회피 금지 · 7 항목 누락 금지 · 8 (v1의 6) "관련된 내용만". 규칙 1·3·4·5는 v1 그대로
+ANSWER_SYSTEM_V2 = """당신은 대전 지역 5개 대학(배재·충남·한남·한밭·목원)의 졸업요건 안내 도우미입니다.
+아래 [근거]에 적힌 내용만으로, 한국어로 쉽게 답하세요.
+
+규칙
+1. [근거]에 답이 없으면 숫자나 조건을 지어내지 말고 "확인 불가"라고 답하고, 어떤 내용이 근거에 없는지 한 줄로 밝힌다.
+2. 질문한 학번이 2022~2026학번 범위 밖이면, 숫자를 답으로 말하지 말고 먼저 "서비스 범위(2022~2026학번) 밖이라 확인 불가"라고 답한다. 근거에 그 학번이 들어 있는 표가 있어도 그 값을 답으로 쓰지 않는다. 다른 학번의 값은 "참고로 ○○학번은 …"처럼 학번을 분명히 구분해 덧붙이는 것만 가능하다.
+3. 근거마다 대학과 적용 학번(입학년도)이 다를 수 있다. 질문의 대학·학번에 맞는 근거만 쓰고, 다른 대학·다른 학번의 값을 섞지 않는다.
+4. 숫자나 조건을 말할 때마다 근거 번호를 [1]처럼 붙인다.
+5. 질문에 대학이나 학번이 없어 답이 갈리면 하나로 단정하지 말고, 갈리는 조건을 밝히거나 되묻는다.
+6. 질문에 대학과 학번이 있고 근거가 그 학번에 적용되는 값(또는 학번 구분 없는 현행 규정)을 보여 주면, 그 값을 확정해서 말한다. "적용 여부는 확인 불가"로 미루지 않는다. 일부 조건만 근거에 없으면 확인된 부분은 확정해서 말하고, 확인 안 된 부분만 따로 "확인 불가"로 적는다.
+7. 질문이 묻는 항목은 빠뜨리지 않는다. 답하기 전에 근거 전체에서 같은 질문에 속한 값·조건·예외·한도·적용 시기를 찾아 모두 말한다. 다른 대학·다른 학번의 값은 규칙 3대로 넣지 않는다.
+8. 질문과 관련된 내용만, 군더더기 없이 말한다.
+
+출력 필드
+- 답변: 사용자에게 보여 줄 답변 ([1] 같은 근거 번호 포함)
+- 인용: 답변에 실제로 쓴 근거 번호 목록 (근거를 쓰지 않았으면 빈 목록)"""
+
 LOOKUP_VERSION = "lookup-v1"
 LOOKUP_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·한밭·목원)의 졸업요건 안내 도우미입니다.
 아래 [기준표 조회 결과]에 적힌 행만으로, 한국어로 쉽게 답하세요.
@@ -272,6 +290,7 @@ def cmd_answer(args):
     sha = file_sha256(chunks_path)
     if chunks_path == CHUNKS and sha != CHUNKS_SHA256:
         sys.exit(f"chunks.jsonl sha256이 기록과 다릅니다 ({sha}). 색인이 낡았을 수 있어 중단합니다.")
+    system, version = (ANSWER_SYSTEM_V2, PROMPT_VERSION_V2) if args.prompt == "v2" else (ANSWER_SYSTEM, PROMPT_VERSION)
     rows = load_csv(DEV_CSV)
     if args.ids:
         want = args.ids.split(",")
@@ -321,7 +340,7 @@ def cmd_answer(args):
         ids, docs, metas, dists = hit["ids"][0], hit["documents"][0], hit["metadatas"][0], hit["distances"][0]
         context = "\n\n".join(f"{chunk_header(i, m)}\n{d}" for i, (m, d) in enumerate(zip(metas, docs), 1))
         user = f"[근거]\n{context}\n\n[질문]\n{r['질문']}"
-        ans, tin, tout = chat.json(MODEL, ANSWER_SYSTEM, user, ANSWER_SCHEMA, "answer")
+        ans, tin, tout = chat.json(MODEL, system, user, ANSWER_SCHEMA, "answer")
         tin_sum += tin
         tout_sum += tout
         cited = [n for n in ans["인용"] if 1 <= n <= len(ids)]
@@ -336,7 +355,7 @@ def cmd_answer(args):
             "혼입_합계": f"{mix['합계혼입']}/{mix['합계대상']}",
             "필터": json.dumps(where, ensure_ascii=False) if args.filter else "",
             "검색질문": sq if args.expand else "",
-            "모델": MODEL, "프롬프트버전": PROMPT_VERSION, "프롬프트해시": prompt_hash(ANSWER_SYSTEM),
+            "모델": MODEL, "프롬프트버전": version, "프롬프트해시": prompt_hash(system),
             "k": K, "컬렉션": collection, "chunks_sha256": sha,
             "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
             "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
@@ -349,7 +368,7 @@ def cmd_answer(args):
     write_csv(path, out, list(out[0]))
     cost = tin_sum / 1e6 * PRICE_IN + tout_sum / 1e6 * PRICE_OUT
     emb_cost = emb_tokens / 1e6 * EMBED_PRICE
-    memo = f"기본 RAG 개발용 {len(rows)}문항, k={K}, {PROMPT_VERSION}" + (" (smoke)" if args.limit else "") + (f" [{args.tag}]" if args.tag else "")
+    memo = f"기본 RAG 개발용 {len(rows)}문항, k={K}, {version}" + (" (smoke)" if args.limit else "") + (f" [{args.tag}]" if args.tag else "")
     log_usage("rag_answer", MODEL, tin_sum, tout_sum, cost, memo)
     log_usage("rag_query_embed", EMBED_MODEL, emb_tokens, 0, emb_cost, memo)
     print(f"저장: {path.relative_to(ROOT)}\n답변 토큰 {tin_sum:,}/{tout_sum:,} ${cost:.5f}, 질문 임베딩 {emb_tokens}토큰 ${emb_cost:.6f}")
@@ -542,6 +561,7 @@ def main():
     a.add_argument("--filter", action="store_true", help="질문에서 뽑은 대학·학번으로 메타데이터 필터 (실험 2)")
     a.add_argument("--expand", action="store_true", help="검색용 질문에 동의어 덧붙임 (실험 3)")
     a.add_argument("--lookup", action="store_true", help="숫자 질문은 criteria 조회로 답변 (실험 8)")
+    a.add_argument("--prompt", choices=["v1", "v2"], default="v1", help="RAG 답변 프롬프트 (v2 = 실험 9, 조회 경로 lookup-v1에는 영향 없음)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")
