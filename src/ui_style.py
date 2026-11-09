@@ -102,6 +102,16 @@ table.tbl td.tot{font-weight:800;color:var(--pt);}
 .stButton>button,.stFormSubmitButton>button{border-radius:10px;font-weight:600;}
 [data-testid="stExpander"]{border-radius:12px;border:1px solid var(--line);}
 [data-testid="stNumberInput"] input,[data-testid="stTextInput"] input{font-size:1rem;}
+/* 질문창의 영어 안내("Press Enter to submit form")는 입력 글자와 겹쳐 숨긴다 */
+[data-testid="InputInstructions"]{display:none!important;}
+/* 사이드바 메뉴 글자를 왼쪽 정렬(버튼 안쪽 래퍼까지 정렬) */
+[class*="st-key-navitem_"] button{text-align:left;}
+[class*="st-key-navitem_"] button>div,[class*="st-key-navitem_"] button [data-testid="stMarkdownContainer"]{justify-content:flex-start!important;text-align:left!important;width:100%;}
+[class*="st-key-navitem_"] button [data-testid="stMarkdownContainer"] p{text-align:left!important;margin:0;}
+/* 근거 보기(HTML details) */
+details.det{margin-top:.25rem;font-size:.85rem;color:var(--mute);}
+details.det summary{cursor:pointer;color:var(--pt);font-weight:600;}
+details.det div{margin:.15rem 0 0 .2rem;line-height:1.5;}
 /* 입학 구분 라디오를 조각 모양으로 */
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>

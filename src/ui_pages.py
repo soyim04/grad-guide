@@ -6,7 +6,7 @@
 - 학생 화면에는 응답 시간·비용·로그를 보이지 않는다. 주소에 `?dev=1`이 있을 때만 보인다.
 """
 
-import os
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -28,6 +28,10 @@ DEV_PAGE = ("dev", "개발자 · 로그", ":material/terminal:")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
 KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음"), "안내": ("info", "안내")}
 DISCLAIMER = "2022~2026학번 기준 · 최종 확인은 학과 사무실에서"
+PLACEHOLDER_DEPT = "학과를 선택하세요"
+GENERIC_DEPT = "목록에 없는 학과 (대학 공통 기준)"
+NO_AREA_NOTICE = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
+SUPPORT_LINE = "모든 학과가 규정 안내와 총 남은 학점을 쓸 수 있어요. 교양·전공 영역별 계산은 경영 계열 학과만 지원해요."
 
 
 # ---------- 공통 ----------
@@ -78,9 +82,27 @@ def page_title(title, sub=""):
 def header(sc):
     year = sc["year"]
     yr = f"{year}학번" if isinstance(year, int) else ("학번 범위 밖" if year == engine.OUT_OF_RANGE else "학번 선택 필요")
-    md(f'<div class="topbar"><div><div class="topbar-title">{U.esc(sc["univ"])}대 {U.esc(yr)} · {U.esc(sc["dept"])}</div>'
+    md(f'<div class="topbar"><div><div class="topbar-title">{U.esc(sc["univ"])}대 {U.esc(yr)} · {U.esc(dept_label(sc))}</div>'
        f'<div class="topbar-sub">{U.esc(sc["entry"])} · 왼쪽 내 정보를 바꾸면 모든 화면에 바로 적용돼요</div></div>'
        f'<div class="pill">{U.esc(DISCLAIMER)}</div></div>')
+
+
+def dept_label(sc):
+    """화면에 보여 줄 학과 이름(선택 전·대학 공통일 때는 dept가 None이라 글자로 따로 쓴다)"""
+    return {"unselected": "학과 미선택", "generic": "목록에 없는 학과(대학 공통)"}.get(sc.get("dept_state"), sc["dept"])
+
+
+def ctx_of(sc):
+    """학점 입력을 기억하는 키의 조건 부분(학과가 None이면 상태로 대신한다)"""
+    return f"{sc['univ']}|{sc['year']}|{sc['dept'] or sc.get('dept_state')}"
+
+
+def need_dept(sc):
+    """'그 외 학과'를 골랐는데 학과를 아직 안 골랐으면 계산·체크리스트·비교를 숨기고 안내만 보여 준다"""
+    if sc.get("dept_state") != "unselected":
+        return True
+    md(U.callout("info", "왼쪽에서 학과(또는 계열)를 선택하세요. 학과마다 졸업학점이 달라요."))
+    return False
 
 
 def need_year(sc):
@@ -110,34 +132,43 @@ def sidebar():
     sb.markdown('<div class="side-h">내 정보</div>', unsafe_allow_html=True)
     univ = sb.selectbox("대학", UNIVS, key="univ")
     year_choice = sb.selectbox("학번(입학년도)", YEAR_CHOICES, format_func=lambda y: f"{y}학번" if isinstance(y, int) else y, key="year")
-    transfer_slot = sb.container()  # 입학 구분이 편입이면 학번 선택 바로 아래에 안내를 채운다
     base = S.BASE_DEPT[univ]
     others = [t for t in S.grad_targets(univ) if t != base]
     kind = sb.radio("학과", [f"{base} (경영 계열)", "그 외 학과"], key=f"deptkind_{univ}")
     if kind.startswith(base) or not others:
-        dept = base
+        dept, dept_state = base, "base"
     else:
-        dept = sb.selectbox("학과·계열 선택", others, key=f"dept_{univ}")
-        sb.caption("경영 계열 외 학과는 총 졸업학점까지만 계산해요. 영역별 기준은 기준표에 없어요.")
+        # 한남은 졸업학점이 계열 단위라 대학 공통 행이 없어 '목록에 없는 학과'를 두지 않는다(계열을 고르게 한다)
+        generic_ok = univ != "한남"
+        options = [PLACEHOLDER_DEPT, *others, *([GENERIC_DEPT] if generic_ok else [])]
+        pick = sb.selectbox("학과·계열 선택", options, key=f"dept_{univ}")
+        if not generic_ok:
+            sb.caption("한남은 졸업학점이 계열별로 달라요. 학과가 속한 계열을 고르세요.")
+        if pick == PLACEHOLDER_DEPT:
+            dept, dept_state = None, "unselected"
+        elif pick == GENERIC_DEPT:
+            dept, dept_state = None, "generic"
+        else:
+            dept, dept_state = pick, "picked"
+    sb.caption(SUPPORT_LINE)
     entry = sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
     transfer_grade = None
     if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
-        transfer_grade = sb.radio("편입 학년 (일반편입)", S.TRANSFER_GRADES, index=S.TRANSFER_GRADES.index(S.TRANSFER_DEFAULT_GRADE), horizontal=True, key="transfer_grade")
-    if entry == "편입":
+        transfer_grade = S.TRANSFER_DEFAULT_GRADE  # 편입 학년 선택은 두지 않고 3학년 기준으로 고정(일반편입은 대부분 3학년)
+    if entry == "편입":  # 편입 안내는 입학 구분(과 편입 학년) 바로 아래에 둔다
         note = S.transfer_note(univ, transfer_grade)
-        with transfer_slot:
-            st.info(note["text"], icon="🔁")
-            if note["basis"]:
-                with st.expander("근거 보기"):
-                    for line in note["basis"]:
-                        st.markdown(f"- {line}")
+        sb.info(note["text"] + (f" {S.TRANSFER_GRADE_LINE}" if transfer_grade else ""), icon="🔁")
+        if note["basis"]:
+            with sb.expander("근거 보기"):
+                for line in note["basis"]:
+                    st.markdown(f"- {line}")
     teacher = False
     if S.has_teacher_rows(univ):
         teacher = sb.checkbox("사범대학 소속 또는 교직이수자", key=f"teacher_{univ}")
     sb.divider()
     sb.markdown('<div class="side-note">입력한 학점·평점은 저장하지 않아요.<br>질문 문장은 서비스 개선을 위해 기록돼요.</div>', unsafe_allow_html=True)
     year = year_choice if isinstance(year_choice, int) else (engine.OUT_OF_RANGE if year_choice == engine.OUT_OF_RANGE else None)
-    return {"univ": univ, "year": year, "dept": dept, "entry": entry, "teacher": teacher, "base": base, "transfer_grade": transfer_grade}
+    return {"univ": univ, "year": year, "dept": dept, "dept_state": dept_state, "entry": entry, "teacher": teacher, "base": base, "transfer_grade": transfer_grade}
 
 
 def plan_for(sc):
@@ -150,30 +181,58 @@ def plan_for(sc):
 
 # ---------- 표시 부품 ----------
 
+def short_article(text, limit=44):
+    """'세칙Ⅰ 제64조 ⑤ 1호 (일반 편입생의 …; 개정 …)' → '세칙Ⅰ 제64조 ⑤ 1호'. 괄호 설명·개정 이력은 근거 보기에 둔다."""
+    t = re.sub(r"(제\d+조(?:의\d+)?)\([^)]*\)", r"\1", str(text)).strip()  # 제64조(제목) → 제64조
+    i = t.find(" (")
+    if i > 0:
+        t = t[:i]
+    return t if len(t) <= limit else t[:limit].rstrip() + "…"
+
+
+def short_title(name):
+    """규정명 앞의 '국립한밭대학교 ' 같은 학교 이름을 뺀다"""
+    return re.sub(r"^(?:국립)?[가-힣]+대학교\s+", "", str(name))
+
+
+def details_html(lines, label="근거 보기"):
+    lines = [x for x in lines if x]
+    if not lines:
+        return ""
+    return f'<details class="det"><summary>{U.esc(label)}</summary>' + "".join(f"<div>{x}</div>" for x in lines) + "</details>"
+
+
 def checklist_html(items, limit=None):
     out = []
     for it in (items if limit is None else items[:limit]):
         cls, label = KIND_BADGE.get(it["kind"], ("na", it["kind"]))
-        src = ""
+        short, det = "", []
         if it.get("src"):
             s = it["src"]
-            src = f'<div class="ck-src">{U.esc(s["id"])} · {U.esc(s["source"])} · 쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])} · 상태 {U.esc(s["status"])}</div>'
-        extra = f'<div class="ck-src">{U.esc(it["extra"])}</div>' if it.get("extra") else ""
+            short = f'<div class="ck-src">{U.esc(short_article(s["source"]))}</div>'
+            det = [f'{U.esc(s["id"])} · {U.esc(s["source"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])} · 상태 {U.esc(s["status"])}']
+        if it.get("extra"):
+            det.append(U.esc(it["extra"]))
         out.append(f'<div class="ck ck-{cls}"><span class="badge b-{cls}">{U.esc(label)}</span>'
-                   f'<div><b>{U.esc(it["title"])}</b><div class="ck-text">{U.esc(it["text"])}</div>{src}{extra}</div></div>')
+                   f'<div><b>{U.esc(it["title"])}</b><div class="ck-text">{U.esc(it["text"])}</div>{short}{details_html(det)}</div></div>')
     return "".join(out)
 
 
 def show_checklist(sc, limit=None, title=True):
     items = S.checklist(sc["univ"], sc["year"], sc["dept"], sc["entry"], sc["teacher"], sc.get("transfer_grade"))
+    na = [x for x in items if x["kind"] == "해당없음"]  # 해당 없는 요건은 기본 숨김(맨 아래 접기)
+    items = [x for x in items if x["kind"] != "해당없음"]
     if title:
         md('<div class="card-h" style="font-size:1rem">학점 외 이수 요건</div>')
     if not items:
         st.caption("기준표에 이 조건의 학점 외 요건이 없어요.")
-        return
-    md(checklist_html(items, limit))
-    if limit is not None and len(items) > limit:
-        st.caption(f"그 밖에 {len(items) - limit}개 요건은 '남은 학점 계산'에서 볼 수 있어요.")
+    else:
+        md(checklist_html(items, limit))
+        if limit is not None and len(items) > limit:
+            st.caption(f"그 밖에 {len(items) - limit}개 요건은 '남은 학점 계산'에서 볼 수 있어요.")
+    if na and limit is None:
+        with st.expander(f"해당 없는 요건 {len(na)}개"):
+            md(checklist_html(na))
 
 
 def show_body(text):
@@ -192,15 +251,16 @@ def sources_html(srcs):
     for s in srcs:
         nums = "".join(f'<span class="num">[{n}]</span>' for n in s.get("nums", []))
         if s["kind"] == "기준표":
-            top = f'{nums}<span>{U.esc(s["title"])}</span>{U.badge("grade", s["grade"])}'
-            meta = (f'대상 {U.esc(s["target"])} · 값 <b>{U.esc(s["value"])}</b> · 상태 {U.esc(s["status"])}<br>'
-                    f'{U.esc(s["id"])} · {U.esc(s["article"])} · 쪽 {U.esc(s["pages"])}')
+            top = f'{nums}<span>{U.esc(s["title"])}</span><span>{U.esc(short_article(s["article"]))}</span>'
+            meta = f'값 <b>{U.esc(s["value"])}</b>'
+            det = [f'대상 {U.esc(s["target"])} · 상태 {U.esc(s["status"])}', f'{U.esc(s["id"])} · {U.esc(s["article"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}']
         else:
             ed = s.get("edition") or ""
-            ed_chip = U.badge("cur" if ed.startswith("현행") else "old", ed) if ed else ""
-            top = f'{nums}<span>{U.esc(s["title"])}</span><span>{U.esc(s["article"])}</span>{ed_chip}{U.badge("grade", s["grade"])}'
-            meta = f'{U.esc(s["univ"])} · {U.esc(s["pages"])}'
-        cards.append(f'<div class="src"><div class="src-top">{top}</div><div class="src-meta">{meta}</div></div>')
+            ed_chip = U.badge("cur" if ed.startswith("현행") else "old", ed.split("(")[0]) if ed else ""
+            top = f'{nums}<span>{U.esc(short_title(s["title"]))}</span><span>{U.esc(short_article(s["article"]))}</span>{ed_chip}'
+            meta = ""
+            det = [f'{U.esc(s["title"])} · {U.esc(s["article"])}', f'{U.esc(s["univ"])} · {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}' + (f' · 판본 {U.esc(ed)}' if ed else "")]
+        cards.append(f'<div class="src"><div class="src-top">{top}</div>' + (f'<div class="src-meta">{meta}</div>' if meta else "") + details_html(det) + "</div>")
     return "".join(cards)
 
 
@@ -296,8 +356,7 @@ def show_history(hist, prefix, compact=False):
 
 def remaining_state(sc, plan):
     """keep에 복사된 입력으로 남은 학점을 계산한다(홈과 전용 페이지가 같은 값을 쓴다). 반환: dict(rem, fallback, any_area, areas_on)"""
-    univ, year, dept = sc["univ"], sc["year"], sc["dept"]
-    ctx = f"{univ}|{year}|{dept}"
+    ctx = ctx_of(sc)
     kp = keep()
     areas_on = plan["tier"] in ("T1", "T2")
     total = kp.get(f"tot|{ctx}")
@@ -319,8 +378,13 @@ def remaining_state(sc, plan):
 
 
 def unsupported_notice(plan):
-    return U.callout("info", "<b>영역별 남은 학점은 이 조건에서 지원하지 않아요.</b> 총 졸업학점까지만 계산해요. "
-                             "영역별 기준이 기준표에 없거나(경영 계열 외 학과 등) 영역 구분을 계산에 쓸 수 없는 대학이에요. 세부는 학과에 확인하세요.")
+    return U.callout("info", U.esc(NO_AREA_NOTICE))
+
+
+def generic_note(sc):
+    """'목록에 없는 학과'는 대학 공통 기준만 쓴다"""
+    if sc.get("dept_state") == "generic":
+        md(U.callout("soft", "대학 공통 기준이에요. 학과마다 다를 수 있으니 학과 사무실에서 확인하세요."))
 
 
 def big_block(sc, st_):
@@ -340,7 +404,7 @@ def big_block(sc, st_):
 
 def reference_lines(plan, rem):
     """'참고' 접기에 넣을 안내(쉬운 말). 학생이 할 수 있는 일이 없는 표 불일치·영역 미지정 학점은 여기로 모은다."""
-    lines = [n for n in plan["notes"]]
+    lines = [] if plan["tier"] == "T0" else [n for n in plan["notes"]]  # T0 안내는 본문 한 줄과 겹쳐 뺀다
     for a in plan["areas"]:
         c = a["check"]
         if c and c[0] in ("미달", "불일치") and a["min"] is not None:
@@ -358,14 +422,15 @@ def reference_lines(plan, rem):
 def card_remaining_home(sc):
     with st.container(key="card_home_rem"):
         md('<div class="card-h">남은 학점 계산</div>')
-        if not need_year(sc):
+        if not need_year(sc) or not need_dept(sc):
             return
         plan = plan_for(sc)
         if plan["grad"] is None:
             for n in plan["notes"]:
                 md(U.callout("warn", U.esc(n)))
             return
-        ctx = f"{sc['univ']}|{sc['year']}|{sc['dept']}"
+        ctx = ctx_of(sc)
+        generic_note(sc)
         num("지금까지 이수한 총 학점", f"tot|{ctx}", f"home_tot|{ctx}")
         stt = remaining_state(sc, plan)
         big_block(sc, stt)
@@ -375,9 +440,9 @@ def card_remaining_home(sc):
 
 def page_remaining(sc):
     page_title("남은 학점 계산", "총 이수 학점만 넣어도 졸업까지 남은 학점을 알려 드려요. 영역별 입력은 선택이에요.")
-    if not need_year(sc):
+    if not need_year(sc) or not need_dept(sc):
         return
-    univ, year, dept = sc["univ"], sc["year"], sc["dept"]
+    univ, year = sc["univ"], sc["year"]
     transfer = sc["entry"] == "편입"
     plan = plan_for(sc)
     if plan["grad"] is None:
@@ -387,19 +452,20 @@ def page_remaining(sc):
             show_checklist(sc)
         return
     grad = plan["grad"]
-    ctx = f"{univ}|{year}|{dept}"
+    ctx = ctx_of(sc)
     areas_on = plan["tier"] in ("T1", "T2")
     stt = remaining_state(sc, plan)
     with st.container(key="card_rem_main"):
-        md(f'<div class="card-sub"><b>{U.esc(univ)}대 {year}학번 · {U.esc(dept)}</b> — 졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')
+        md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')  # 대학·학번·학과는 페이지 제목에 있어 반복하지 않는다
+        cap_row = S.transfer_cap_row(univ, sc["transfer_grade"], grad["값"]) if transfer and sc.get("transfer_grade") else None
         with st.expander("근거 보기"):
             st.markdown(f"`{grad['행ID']}` · 이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
-        if transfer:
-            md(U.callout("info", "편입 인정학점도 총 이수 학점에 포함해 넣어 주세요. 편입 인정학점의 영역 구분은 학과에서 확인하세요."))
-            if sc.get("transfer_grade"):
-                cap = S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"])
-                if cap:
-                    md(U.callout("soft", U.esc(cap)))
+            if cap_row:
+                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n`{cap_row['행ID']}` · {cap_row['출처조항']} · 쪽 {cap_row['출처쪽']} · 등급 {cap_row['출처등급']}")
+        generic_note(sc)
+        if transfer:  # 안내 상자 하나(인정학점 상한이 있으면 괄호로 함께)
+            cap = f"(최대 {cap_row['값']}학점)" if cap_row else ""
+            md(U.callout("info", f"편입 인정학점{cap}도 총 이수 학점에 포함해 넣어 주세요. 영역 구분은 학과에서 확인하세요."))
         num("지금까지 이수한 총 학점", f"tot|{ctx}", f"tot|{ctx}")
         big_block(sc, stt)
         if plan.get("transfer") and stt["rem"] is not None:  # 배재 편입: 전공 기준(45·24)으로 남은 학점 한 줄
@@ -476,7 +542,7 @@ def compare_conclusion_html(r):
 def card_compare_home(sc):
     with st.container(key="card_home_cmp"):
         md('<div class="card-h">학사 선택 비교</div>')
-        if not need_year(sc):
+        if not need_year(sc) or not need_dept(sc):
             return
         r = S.compare(sc["univ"], sc["year"], sc["dept"])
         if not r["ok"]:
@@ -493,9 +559,10 @@ def card_compare_home(sc):
 
 def page_compare(sc):
     page_title("학사 선택 비교", "부전공 ↔ 복수·다전공. 전공학점 합 = 주전공 요구 학점 + 추가로 이수할 학점")
-    if not need_year(sc):
+    if not need_year(sc) or not need_dept(sc):
         return
     univ, year, dept = sc["univ"], sc["year"], sc["dept"]
+    generic_note(sc)
     r = S.compare(univ, year, dept)
     if not r["ok"]:
         md(U.callout("warn", "이 조건의 부전공·복수(다)전공 학점을 기준표에서 확인하지 못했어요(확인 불가). " + U.esc(r.get("why") or "")))
@@ -553,6 +620,23 @@ def page_home(sc):
     with c3:
         card_compare_home(sc)
     card_courses(sc)
+    support_table()
+
+
+def support_table():
+    """지원 범위 표(기능 × 경영 계열/그 외 학과). 영역별 계산 지원 대학은 area_plan 단계로 확인한 값이다(배재·충남·목원 T1/T2, 한남·한밭 T3)."""
+    with st.container(key="card_support"):
+        md('<div class="card-h">지원 범위</div>')
+        md(U.table(["기능", "경영 계열 학과", "그 외 학과"], [
+            ["규정 안내", "지원", "지원"],
+            ["총 남은 학점", "지원", "지원"],
+            ["학점 외 요건", "지원", "지원"],
+            ["영역별 남은 학점", "지원 (각주 1)", "지원 안 함"],
+            ["학사 선택 비교", "지원", "일부 (각주 2)"],
+            ["이번 학기 개설 과목", "준비 중 (각주 3)", "준비 중 (각주 3)"],
+        ]))
+        md('<div class="ck-src">1) 한남·한밭은 경영 계열도 영역별 계산이 없고 총 학점만 계산해요. '
+           '2) 학과마다 주전공 학점이 달라 기준표에 없으면 "학과 확인 필요"로 안내해요. 3) 배재대부터 준비 중이에요.</div>')
 
 
 def page_ask(sc):

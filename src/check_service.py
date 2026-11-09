@@ -445,6 +445,10 @@ def cmd_app():
         def html(at):  # 화면에 나온 모든 마크다운(HTML 부품 포함)
             return texts(at.markdown) + " " + texts(at.caption)
 
+        def html_outside(at):  # 접기(expander) 안을 뺀 본문 마크다운
+            inner = {id(m) for e in at.expander for m in e.markdown}
+            return " ".join(m.value for m in at.markdown if id(m) not in inner)
+
         def expander(at, label):
             hits = [e for e in at.expander if e.label == label]
             return hits[0] if hits else None
@@ -467,7 +471,7 @@ def cmd_app():
         hidden = " ".join(r[0] for r in hide_rules)
         check("화면: 사이드바 펼치기·접기 버튼과 도구 막대·헤더를 숨기는 CSS 규칙이 없다(메뉴·배포 버튼만 개별로 숨김)",
               not any(k in hidden for k in ("stExpandSidebarButton", "stSidebarCollapseButton", "stToolbar\"", "stToolbarActions", "stHeader\"", "stSidebar\"", "stSidebarCollapsedControl"))
-              and "stMainMenu" in hidden and "stAppDeployButton" in hidden, hidden[:120])
+              and "stMainMenu" in hidden and "stAppDeployButton" in hidden and "InputInstructions" in hidden, hidden[:120])
         src_app = (ROOT / "src" / "app.py").read_text(encoding="utf-8")
         check("화면: set_page_config에 initial_sidebar_state=\"expanded\"", 'initial_sidebar_state="expanded"' in src_app)
         h = html(at)
@@ -502,7 +506,7 @@ def cmd_app():
         check("화면: 홈 큰 숫자 = 남은 학점 페이지 큰 숫자(5), 홈에서 넣은 125가 페이지 입력칸에 유지",
               home_big == "5" and big(at) == "5" and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125, f"{home_big} {big(at)}")
         check("화면: 큰 숫자는 하나뿐(st.metric 없음), 편입 안내 표시, 근거는 접기",
-              not at.metric and "편입 인정학점도 총 이수 학점에 포함" in html(at) and expander(at, "근거 보기") is not None and "130학점 이상" in html(at))
+              not at.metric and "편입 인정학점(최대 65학점)도 총 이수 학점에 포함해 넣어 주세요" in html(at) and expander(at, "근거 보기") is not None and "130학점 이상" in html(at))
         at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(120)
         at.run()
         nav(at, "home")
@@ -535,38 +539,31 @@ def cmd_app():
         check("화면: 페이지를 옮겼다 와도 영역 입력(교양 5·전공 48)과 총 이수 학점(125) 유지",
               at.number_input(key="done|배재|2023|IT경영정보학과|교양").value == 5 and at.number_input(key="done|배재|2023|IT경영정보학과|전공").value == 48
               and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125)
-        # E15 회귀: 배재 2023 IT경영정보 편입 · 총 126 → 남은 4 · 전공 기준 45 (3학년 기본), 2학년·4학년·신입
+        # E15 회귀: 배재 2023 IT경영정보 편입 · 총 126 → 남은 4 · 전공 기준 45. 편입 학년 선택 칸은 없고 3학년 고정(E17b)
         at = pick(run(), "배재", 2023, "편입")
-        check("화면: [E15] 배재 편입에만 '편입 학년' 선택(기본 3학년), 한남 편입·배재 신입에는 없음",
-              at.sidebar.radio(key="transfer_grade").value == "3학년" and not [x for x in pick(run(), "한남", 2023, "편입").sidebar.radio if x.key == "transfer_grade"]
-              and not [x for x in pick(run(), "배재", 2023, "신입").sidebar.radio if x.key == "transfer_grade"])
+        check("화면: [E17b] 편입 학년 선택 칸이 없다(배재 편입·한남 편입·배재 신입 모두), 배재 편입 안내에 3학년 기준 고정 문구",
+              not [x for x in at.sidebar.radio if x.key == "transfer_grade"] and not [x for x in pick(run(), "한남", 2023, "편입").sidebar.radio if x.key == "transfer_grade"]
+              and not [x for x in pick(run(), "배재", 2023, "신입").sidebar.radio if x.key == "transfer_grade"]
+              and S.TRANSFER_GRADE_LINE in texts(at.sidebar.info) and "4학년 편입 전공 24학점" in texts(at.sidebar.info)
+              and S.TRANSFER_GRADE_LINE not in texts(pick(run(), "한남", 2023, "편입").sidebar.info), texts(at.sidebar.info)[-90:])
         nav(at, "remaining")
         at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(126)
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(40)
         at.run()
         h = html(at)
-        check("화면: [E15] 배재 2023 편입 3학년 총 126 → 남은 4, 전공 기준 45 중 5 남음(BJ-049), 인정학점 상한 65(BJ 130·3학년)",
+        check("화면: [E15] 배재 2023 편입(3학년 고정) 총 126 → 남은 4, 전공 기준 45 중 5 남음(BJ-049), 인정학점 상한 65(BJ 130·3학년)",
               big(at) == "4" and "전공 기준 <b>45학점</b> 중 <b>5학점</b> 남았어요" in h and "BJ-049" in h and "최대 65학점" in h, h[-260:])
-        check("화면: [E15] 체크리스트에 편입 요건(면제 안내·인성 이수·학사편입 안내)이 배지로, 채플(2학년 전용)은 3학년에는 없다",
-              "편입 이수 요건" in h and "b-info" in h and "기독교정신과아펜젤러인성" in h and "학사편입" in h and "채플" not in h and "✅" not in h, h[:60])
-        at.sidebar.radio(key="transfer_grade").set_value("2학년")
-        at.run()
-        h = html(at)
-        check("화면: [E15] 2학년 편입: 전공 기준 45·인정학점 상한 33·채플 2회·학번 안내는 '학과 확인'(2년 앞 학번 문구 없음)",
-              "전공 기준 <b>45학점</b>" in h and "최대 33학점" in h and "채플 2회" in h and "2년 앞 학번" not in texts(at.sidebar.info)
-              and "확인하지 못했어요" in texts(at.sidebar.info), texts(at.sidebar.info)[:80])
-        at.sidebar.radio(key="transfer_grade").set_value("4학년")
-        at.run()
-        h = html(at)
-        check("화면: [E15] 4학년 편입: 전공 기준 24·인정학점 상한 98·채플 없음", "전공 기준 <b>24학점</b> 중 <b>0학점</b> 남았어요" in h and "BJ-050" in h
-              and "최대 98학점" in h and "채플" not in h, h[-160:])
+        check("화면: [E15] 체크리스트에 편입 요건(면제 안내·인성 이수·학사편입 안내)이 배지로, 채플(2학년 전용)은 화면에 없다",
+              "편입 전 필수과목 면제" in h and "b-info" in h and "기독교정신과아펜젤러인성 이수" in h and "편입 후 전공필수 이수" in h and "학사편입" in h and "채플" not in h and "✅" not in h, h[:60])
+        check("화면: [E17b] 2학년·4학년 기준 값(상한 33·98, 전공 24)은 화면에 나오지 않는다(안내 문구의 '전공 24학점' 제외)",
+              "최대 33학점" not in h and "최대 98학점" not in h and "BJ-050" not in h and "전공 기준 <b>24학점</b>" not in h)
         at = pick(run(), "배재", 2023, "신입")
         nav(at, "remaining")
         h = html(at)
-        check("화면: [E15] 신입에게는 편입 요건·인정학점 상한이 안 보인다", "편입 이수 요건" not in h and "최대 65학점" not in h and "전공 기준 <b>" not in h)
+        check("화면: [E15] 신입에게는 편입 요건·인정학점 상한이 안 보인다", "편입 전 필수과목 면제" not in h and "최대 65학점" not in h and "전공 기준 <b>" not in h)
         ids = {r["행ID"] for r in L.CRITERIA}
-        check("기준표: [E15] 배재 편입 행 BJ-049~062 14개, 항목은 모두 '편입_' 접두, 조건에 '이수 필수' 문구 없음(규칙 12 충돌 방지)",
-              all(f"BJ-{i:03d}" in ids for i in range(49, 63)) and all(L.BY_ID[f"BJ-{i:03d}"]["항목"].startswith("편입_") and "이수 필수" not in L.BY_ID[f"BJ-{i:03d}"]["조건"] for i in range(49, 63)))
+        check("기준표: [E15] 배재 편입 행 BJ-049~063 15개(060~063은 항목원어 제목), 항목은 모두 '편입_' 접두, 조건에 '이수 필수' 문구 없음(규칙 12 충돌 방지)",
+              all(f"BJ-{i:03d}" in ids for i in range(49, 64)) and all(L.BY_ID[f"BJ-{i:03d}"]["항목"].startswith("편입_") and "이수 필수" not in L.BY_ID[f"BJ-{i:03d}"]["조건"] for i in range(49, 64)) and all(L.BY_ID[f"BJ-{i:03d}"]["항목원어"] for i in range(60, 64)) and L.BY_ID["BJ-063"]["출처등급"] == "B")
         # 편입 + 영역만 입력(총 비움) → 큰 숫자 없이 총 입력 요청
         at = pick(run(), "배재", 2024, "편입")
         nav(at, "remaining")
@@ -596,14 +593,51 @@ def cmd_app():
             nav(at, "remaining")
             at.number_input(key=f"tot|{u}|2023|{S.BASE_DEPT[u]}").set_value(100)
             at.run()
-            check(f"화면: {u}(T3) 영역별 미지원 안내 + 총 100 → 졸업까지 남은 학점·참고 표", "영역별 남은 학점은 이 조건에서 지원하지 않아요" in html(at) and big(at) is not None
+            check(f"화면: {u}(T3) 영역별 미지원 한 줄 안내 + 총 100 → 졸업까지 남은 학점·참고 표", "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요." in html(at) and big(at) is not None
                   and expander(at, "참고") is not None and not at.exception and expander(at, "영역별 확인 (선택)") is None, str(big(at)))
+        NO_AREA = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
         at = pick(run(), "배재", 2023, "신입")
         at.sidebar.radio(key="deptkind_배재").set_value("그 외 학과")
         at.run()
+        sel = at.sidebar.selectbox(key="dept_배재")
+        check("화면: [학과] '그 외 학과' 목록 맨 위는 '학과를 선택하세요'(기본값), 맨 아래는 '목록에 없는 학과 (대학 공통 기준)'",
+              sel.options[0] == "학과를 선택하세요" and sel.options[-1] == "목록에 없는 학과 (대학 공통 기준)" and sel.value == "학과를 선택하세요", str(sel.options[:2]))
+        for pg in ("home", "remaining", "compare"):
+            nav(at, pg)
+            h = html(at)
+            check(f"화면: [학과] 학과 미선택이면 {pg} 페이지에 계산·체크리스트·비교 없이 안내만", not at.exception and "학과(또는 계열)를 선택하세요" in h and big(at) is None
+                  and "학점 외 이수 요건" not in h and "<th>전공학점 합</th>" not in h and len(at.number_input) == 0 and "학과 미선택" in h, h[:60])
+        for u, y, want in (("배재", 2023, 130), ("배재", 2025, 127), ("충남", 2023, 130), ("한밭", 2023, 130), ("목원", 2022, 132), ("목원", 2023, 126)):
+            at = pick(run(), u, y, "신입")
+            at.sidebar.radio(key=f"deptkind_{u}").set_value("그 외 학과")
+            at.run()
+            at.sidebar.selectbox(key=f"dept_{u}").set_value("목록에 없는 학과 (대학 공통 기준)")
+            at.run()
+            nav(at, "remaining")
+            h = html(at)
+            check(f"화면: [학과] {u} {y} '목록에 없는 학과' → 대학 공통 졸업학점 {want}학점, 대학 공통 안내·영역별 미지원 한 줄", f"졸업학점 <b>{want}학점 이상</b>" in h and "대학 공통 기준이에요" in h and NO_AREA in h
+                  and "목록에 없는 학과(대학 공통)" in h and "영역별 확인 (선택)" not in [e.label for e in at.expander] and not at.exception, h[:80])
+        at = pick(run(), "한남", 2023, "신입")
+        at.sidebar.radio(key="deptkind_한남").set_value("그 외 학과")
+        at.run()
+        opts = at.sidebar.selectbox(key="dept_한남").options
+        check("화면: [학과] 한남은 '목록에 없는 학과' 없이 계열 2개 + '학과가 속한 계열을 고르세요' 안내", "목록에 없는 학과 (대학 공통 기준)" not in opts and "인문사회계열" in opts and "이학·공학·예능·체능·간호계열" in opts
+              and "학과가 속한 계열을 고르세요" in texts(at.sidebar.caption), str(opts))
+        at.sidebar.selectbox(key="dept_한남").set_value("인문사회계열")
+        at.run()
         nav(at, "remaining")
-        check("화면: 경영 계열 외 학과는 영역별 미지원 안내(오류·빈 화면 아님)", not at.exception and "영역별 남은 학점은 이 조건에서 지원하지 않아요" in html(at) and expander(at, "영역별 확인 (선택)") is None, html(at)[:80])
-        check("화면: 배재 경영 계열은 영역별 미지원 안내 없음", "영역별 남은 학점은 이 조건에서 지원하지 않아요" not in html(nav(pick(run(), "배재", 2023, "신입"), "remaining")))
+        check("화면: [학과] 한남 인문사회계열 → 졸업학점 120학점(HN-001)", "졸업학점 <b>120학점 이상</b>" in html(at), html(at)[:60])
+        at = pick(run(), "한밭", 2024, "신입")
+        nav(at, "remaining")
+        check("화면: [정리] 신입에게 편입 전용 비교과 같은 '해당 없음' 항목은 기본 숨김, '해당 없는 요건 N개' 접기 안에만", any(e.label.startswith("해당 없는 요건") for e in at.expander)
+              and "b-na" in " ".join(texts(e.markdown) for e in at.expander if e.label.startswith("해당 없는 요건")) and "해당 없음" not in html_outside(at))
+        at = pick(run(), "배재", 2023, "신입")
+        check("화면: [정리] 홈에 지원 범위 표(기능×경영 계열/그 외 학과·각주)와 사이드바 지원 범위 한 줄, 옛 사이드바 안내 없음",
+              "지원 범위" in html(at) and "영역별 남은 학점" in html(at) and "각주 1" in html(at) and "개설 과목" in html(at)
+              and "모든 학과가 규정 안내와 총 남은 학점을 쓸 수 있어요" in texts(at.sidebar.caption) and "경영 계열 외 학과는 총 졸업학점까지만" not in texts(at.sidebar.caption))
+        at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
+        check("화면: [정리] 배재 경영 계열은 영역별 미지원 안내 없음", NO_AREA not in html(at))
+        check("화면: [정리] 남은 학점 위쪽에 '졸업학점 130학점 이상'만(대학·학번·학과 반복 없음)", 'class="card-sub">졸업학점 <b>130학점 이상</b></div>' in html(at))
         # 체크리스트: 초록 체크 없음, 배지로 표시
         at = nav(pick(run(), "배재", 2025, "신입"), "remaining")
         h = html(at)

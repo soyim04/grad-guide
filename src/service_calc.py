@@ -297,7 +297,7 @@ def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=No
             text = cond.split(": ", 1)[-1]
             kind = "안내" if "면제" in text and "예외" not in text else "요건"
             extra = "학칙·세칙이 아니라 강의시간편람(B등급)에 있는 내용이에요." if r["출처등급"] == "B" else ""
-            add("편입 이수 요건", kind, text + ("." if not text.endswith(".") else ""), r, extra)
+            add(r["항목원어"] or "편입 이수 요건", kind, text + ("." if not text.endswith(".") else ""), r, extra)
         if found:
             add("학사편입", "안내", "여기 내용은 일반편입 기준이에요. 학사편입은 규정이 달라 학과에 확인하세요.", None)
     return items
@@ -396,7 +396,8 @@ def transfer_note(univ, grade=None):
 
 # ---------- 배재 일반편입 (E15, 세칙Ⅰ 제64조) ----------
 TRANSFER_GRADES = ["2학년", "3학년", "4학년"]
-TRANSFER_DEFAULT_GRADE = "3학년"
+TRANSFER_DEFAULT_GRADE = "3학년"  # 화면은 3학년 기준 고정(선택 칸 없음). 2·4학년 행은 기준표에만 남겨 둔다
+TRANSFER_GRADE_LINE = "3학년 편입 기준이에요. 2·4학년 편입은 기준이 달라 학과에 확인하세요(4학년 편입 전공 24학점)."
 TRANSFER_MAJOR_NOTE = ("편입 전공 기준(제64조 ⑤)으로 계산했어요. 전적대학에서 인정받은 전공 학점도 포함해서 넣으세요. "
                        "교양·일반선택은 편입 인정학점이 영역으로 구분되지 않아 참고용이에요.")
 
