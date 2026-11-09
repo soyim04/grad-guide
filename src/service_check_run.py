@@ -4,6 +4,7 @@
 실행: .venv\\Scripts\\python.exe src\\service_check_run.py   (API 비용 약 $0.01)
 """
 
+import argparse
 import csv
 import sys
 from datetime import date
@@ -36,9 +37,15 @@ CASES = [
 
 
 def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", type=int, nargs="*", help="실행할 문항 번호(기본 전부)")
+    ap.add_argument("--tag", default="", help="결과 파일 이름 꼬리표")
+    a = ap.parse_args()
     eng = engine.Engine()
     rows, total = [], 0.0
     for i, (univ, year, dept, entry, q) in enumerate(CASES, 1):
+        if a.only and i not in a.only:
+            continue
         dept = dept or S.BASE_DEPT[univ]
         out = eng.answer(q, univ, year, dept)
         cards = " | ".join("[{}] {}".format(",".join(map(str, s["nums"])), s["id"] if s["kind"] == "기준표" else f"{s['title']} {s['article']}") for s in out["sources"])
@@ -51,7 +58,7 @@ def main():
                      "근거카드": cards, "배지": badges, "체크리스트안내": " · ".join(hint), "실제질문": out["question_used"],
                      "비용_usd": f"{out['cost_usd']:.5f}", "응답_ms": out["latency_ms"]})
         print(f"{i:>2} {univ} {year} [{out['route']}] {q} -> {len(out['answer'])}자 ${out['cost_usd']:.5f}")
-    path = ROOT / "eval" / "results" / f"service_check_{date.today():%Y%m%d}.csv"
+    path = ROOT / "eval" / "results" / f"service_check_{date.today():%Y%m%d}{'_' + a.tag if a.tag else ''}.csv"
     with path.open("w", encoding="utf-8-sig", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
         w.writeheader()
