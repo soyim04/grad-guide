@@ -129,6 +129,34 @@ def is_strong_limit(memo):
     return bool(STRONG_RE.search(memo or ""))
 
 
+# ---------- 부족한 영역 → 개설 과목 영역(E19) ----------
+PICK_HINT = "부족한 교양 영역을 골라 보세요(세부 항목까지 입력하면 바로 이어져요)"
+
+
+def deficit_targets(year, rem_areas, transfer=False, kids_input=False):
+    """남은 학점 결과(rem["areas"])에서 부족한 영역을 개설 과목 화면 영역 키로 바꾼다. 반환: (영역 키 목록, 교양 영역을 직접 골라야 하는지)
+    - 전공: 전공 영역 / 공유혁신(편입 제외): 공유혁신 영역
+    - 교양: 세부 항목을 입력했고 부족한 세부 항목 이름이 개설 과목 영역과 같으면 그 영역, 아니면 미리 고르지 않고 고르라는 안내
+    - 배재 편입생은 교양 영역별 결과가 참고용이라 교양은 연결하지 않고 전공만 연결한다"""
+    views = set(view_areas(year))
+    out, pick = [], False
+    for a in rem_areas:
+        if not a["remaining"] or a["remaining"] <= 0:
+            continue
+        n = a["name"]
+        if n == "전공" and "전공" in views:
+            out.append("전공")
+        elif n == "공유혁신" and "공유혁신" in views and not transfer:
+            out.append("공유혁신")
+        elif n == "교양" and not transfer:
+            kids = [k["name"] for k in a["kids"] if k["remaining"] > 0 and k["name"] in views] if kids_input else []
+            if kids:
+                out += kids
+            else:
+                pick = True
+    return list(dict.fromkeys(out)), pick
+
+
 # ---------- 읽기·묶기 ----------
 _cache = {}
 

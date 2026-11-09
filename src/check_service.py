@@ -379,6 +379,26 @@ def cmd_logic():
     mw = {it_["title"]: it_ for it_ in S.checklist("목원", 2023, "경영학부", "신입", False)}
     check("체크리스트: 목원 졸업 평점·체험교과목은 쉬운 한 문장, 조항은 출처 줄(src)에 그대로", mw["졸업 평점"]["text"] == "졸업 평점 기준은 없어요. 학과에 한 번 확인하세요." and mw["체험교과목"]["text"] == "일반학과는 체험교과목 요건이 없어요."
           and "제47조" in mw["졸업 평점"]["src"]["source"] and "제27조" in mw["체험교과목"]["src"]["source"])
+    # 1-9c. E19 로직 부품: % 기준 표기, 부족 영역 → 개설 과목 영역, 약어 툴팁
+    import ui_style as U_
+    hb = {r["항목"]: r for r in S.area_plan("한밭", S.BASE_DEPT["한밭"], 2024)["ref_rows"]}
+    check("E19: % 기준은 '졸업학점의 25% 이상', 학점 기준은 그대로('5학점 이상'), fmt_value는 그대로('25% 이상')",
+          S.fmt_basis(hb["교양"]) == "졸업학점의 25% 이상" and S.fmt_basis(hb["대학특화"]) == "5학점 이상" and S.fmt_value(hb["교양"]) == "25% 이상" and S.fmt_basis(hb["기본전공"]) == "36~51학점 범위")
+
+    def fa(name, remaining, kids=()):
+        return {"name": name, "remaining": remaining, "kids": [{"name": k, "remaining": r} for k, r in kids]}
+    ra = [fa("교양", 20, [("교양필수", 0.0), ("교양_글로벌언어", 3.0), ("교양_균형학문", 9.0), ("교양_비전설계", 3.0)]), fa("전공", 5)]
+    check("E19: 부족 영역 → 개설 과목 영역 — 세부 입력 있으면 부족한 교양 세부 영역과 전공, 2022~2024는 교양_비전설계 포함",
+          CR.deficit_targets(2023, ra, False, True) == (["교양_글로벌언어", "교양_균형학문", "교양_비전설계", "전공"], False))
+    check("E19: 교양 부족인데 세부 입력이 없으면 영역을 미리 고르지 않고(pick=True) 전공만 연결", CR.deficit_targets(2023, ra, False, False) == (["전공"], True))
+    check("E19: 배재 편입은 교양 연결 안 함(pick도 False), 전공만", CR.deficit_targets(2023, ra, True, True) == (["전공"], False))
+    check("E19: 2025~ 공유혁신 부족은 공유혁신 영역, 편입이면 제외, 부족 없으면 빈 결과, 2025~에는 교양_비전설계 영역이 없어 교양 세부가 안 맞으면 pick",
+          CR.deficit_targets(2025, [fa("공유혁신", 4)], False, False) == (["공유혁신"], False) and CR.deficit_targets(2025, [fa("공유혁신", 4)], True, False) == ([], False)
+          and CR.deficit_targets(2025, [fa("교양", 0), fa("전공", 0)], False, True) == ([], False) and CR.deficit_targets(2025, [fa("교양", 3, [("교양_비전설계", 3.0)])], False, True) == ([], True))
+    t_ = U_.abbr_html("교필선 (영역 표시 없음) · 교선 전체 · 전공필수 · 교양필수 · 혁신교육과미래설계 (전필, P/F)")
+    check("E19: 약어 툴팁 — 교필선·교선·전필에 풀이(title), '전공필수'·'교양필수' 같은 풀이된 말에는 안 붙음",
+          'title="교양필수선택(영역을 골라 듣는 교양)">교필선</abbr>' in t_ and 'title="교양선택">교선</abbr>' in t_ and 'title="전공필수">전필</abbr>' in t_ and t_.count("<abbr") == 3 and "전공필수 ·" in t_
+          and all(k in U_.ABBR_HELP for k in ("교필=교양필수", "교필선=", "교선=교양선택", "전필=전공필수", "전선=전공선택", "일선=일반선택")))
     # 1-9. 배재 개설 과목(가공본이 있을 때만): 파일 659분반, 영역 분류, 공유혁신 분리, 요일 파싱, 제한 배지
     if not CR.available():
         skip("개설 과목 로직 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
@@ -546,7 +566,7 @@ def cmd_app():
         at = run()
         labels = [b.label for b in at.sidebar.button]
         check("화면: 첫 화면 예외 없음·홈·메뉴 5개(개발자 메뉴 없음)", not at.exception and len(labels) == 5 and labels[0] == "홈" and "학사 규정 안내" in labels
-              and "남은 학점 계산" in labels and "학사 선택 비교" in labels and labels[4] == "이번 학기 개설 과목", str(labels))
+              and "내 졸업요건" in labels and "학사 선택 비교" in labels and labels[4] == "이번 학기 개설 과목", str(labels))
         import re as _re
         import ui_style
         hide_rules = [r for r in _re.findall(r"([^{}]+)\{([^{}]*)\}", _re.sub(r"/\*.*?\*/", "", ui_style.CSS, flags=_re.S))
@@ -560,7 +580,7 @@ def cmd_app():
         h = html(at)
         check("화면: 서비스명·한 줄 소개·면책·저장 안내 표시", "졸업나침반" in texts(at.sidebar.markdown) and "5개 대학의 학사 규정을 근거로 답변해요" in texts(at.sidebar.markdown)
               and "2022~2026학번 기준 · 최종 확인은 학과 사무실에서" in h and "입력한 학점·평점은 저장하지 않아요" in texts(at.sidebar.markdown), h[:60])
-        check("화면: 홈 요약 카드 4개(남은 학점·규정 질문·학사 선택 비교·개설 과목)", all(k in h for k in ("남은 학점 계산", "학사 규정 질문", "학사 선택 비교", "이번 학기 개설 과목")))
+        check("화면: 홈 요약 카드 4개(남은 학점·규정 질문·학사 선택 비교·개설 과목)", all(k in h for k in ("내 졸업요건", "학사 규정 질문", "학사 선택 비교", "이번 학기 개설 과목")))
         check("화면: 학번 선택지는 2022~2026 + 모름 + 범위 밖(자유 입력 없음)", at.sidebar.selectbox(key="year").options == ["2022학번", "2023학번", "2024학번", "2025학번", "2026학번", "모름", "범위 밖"]
               and not at.sidebar.number_input)
         bad = []
@@ -723,7 +743,7 @@ def cmd_app():
         at = pick(run(), "배재", 2023, "신입")
         check("화면: [정리] 홈에 지원 범위 표(기능×경영 계열/그 외 학과·각주)와 사이드바 지원 범위 한 줄, 옛 사이드바 안내 없음",
               "지원 범위" in html(at) and "영역별 남은 학점" in html(at) and "각주 1" in html(at) and "개설 과목" in html(at)
-              and "모든 학과가 규정 안내와 총 남은 학점을 쓸 수 있어요" in texts(at.sidebar.caption) and "경영 계열 외 학과는 총 졸업학점까지만" not in texts(at.sidebar.caption))
+              and "모든 학과가 규정 안내와 졸업요건 확인을 쓸 수 있어요" in texts(at.sidebar.caption) and "경영 계열 외 학과는 총 졸업학점까지만" not in texts(at.sidebar.caption))
         at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
         check("화면: [정리] 배재 경영 계열은 영역별 미지원 안내 없음", NO_AREA not in html(at))
         check("화면: [정리] 남은 학점 위쪽에 '졸업학점 130학점 이상'만(대학·학번·학과 반복 없음)", 'class="card-sub">졸업학점 <b>130학점 이상</b></div>' in html(at))
@@ -746,6 +766,68 @@ def cmd_app():
             can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
             ok2 = all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and "근거 행" in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 홈 카드와 페이지 모두 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok and ok2, hh[:60])
+        # ---- E19 내 졸업요건: 학점을 몰라도 쓸 수 있게 ----
+        def keys_of(at_):
+            return [b.key for b in at_.button]
+        for u_, y_ in (("배재", 2023), ("충남", 2024), ("한남", 2024), ("한밭", 2024), ("목원", 2023)):
+            at = nav(pick(run(), u_, y_, "신입"), "remaining")
+            h = html(at)
+            i1, i2 = h.find("졸업하려면 이것들을 채워야 해요"), h.find("이수 학점을 알면 남은 학점을 계산해 드려요 (선택)")
+            check(f"화면: [E19] {u_} {y_} 입력 없이 졸업학점·영역 기준 표·체크리스트가 먼저 보이고(① 제목이 ② 앞), 큰 숫자는 없고 '학점을 몰라도' 안내",
+                  0 <= i1 < i2 and "졸업학점 <b>" in h and "<th>영역</th>" in h and "학점 외 이수 요건" in h and big(at) is None
+                  and "학점을 몰라도 위 졸업요건은 확인할 수 있어요" in texts(at.caption) and not at.exception, f"{i1} {i2}")
+        at = nav(pick(run(), "한밭", 2024, "신입"), "remaining")
+        h = html(at)
+        check("화면: [E19] 한밭 교양은 '졸업학점의 25% 이상'(단위가 보임), 단독 '25% 이상' 칸 없음", "졸업학점의 25% 이상" in h and "<td>25% 이상</td>" not in h)
+        at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
+        e = [x for x in at.expander if x.label == "내 이수 학점은 어디서 보나요?"]
+        check("화면: [E19] 배재 이수 학점 안내(졸업자가진단·소계), 목원은 졸업사정(졸업 자가진단) 안내", len(e) == 1 and "졸업자가진단" in texts(e[0].markdown) and "소계" in texts(e[0].markdown)
+              and "졸업사정(졸업 자가진단)" in texts([x for x in nav(pick(run(), "목원", 2023, "신입"), "remaining").expander if x.label == "내 이수 학점은 어디서 보나요?"][0].markdown))
+        at = nav(pick(run(), "목원", 2023, "신입"), "remaining")
+        at.number_input(key="tot|목원|2023|경영학부").set_value(100).run()
+        check("화면: [E19] 목원(배재 외)은 개설 과목 연결 버튼 없이 '배재대에서 시범 제공 중' 한 줄", not [k for k in keys_of(at) if k.startswith("crs_go")] and "개설 과목 연결은 배재대에서 시범 제공 중이에요." in html(at))
+        at = nav(pick(run(), "홈", 2023, "신입") if False else pick(run(), "배재", 2023, "신입"), "home")
+        h = html(at)
+        check("화면: [E19] 홈 맨 위 3단계 안내, 홈 카드는 '내 졸업요건' 요약(졸업학점·영역 기준)이 먼저이고 학점 계산은 선택 접기",
+              "① 내 정보 고르기" in h and "② 졸업요건 보기" in h and "③ 학점을 알면" in h and h.find("내 졸업요건") >= 0 and "졸업학점 <b>" in h
+              and "36학점 이상" in h and big(at) is None and [x.label for x in at.expander if "선택" in x.label])
+        if not CR.available():
+            skip("E19 개설 과목 연결 화면 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
+        else:
+            ctx_ = "배재|2023|IT경영정보학과"
+            at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
+            check("화면: [E19] 영역 입력 전에는 개설 과목 연결 버튼 대신 '영역별 이수 학점까지 입력하면' 안내와 전체 보기 버튼", "crs_go_all" in keys_of(at) and "영역별 이수 학점까지 입력하면" in html(at) and not [k for k in keys_of(at) if k.startswith("crs_go_") and k != "crs_go_all"])
+            at.number_input(key=f"tot|{ctx_}").set_value(100).run()
+            at.number_input(key=f"done|{ctx_}|교양").set_value(10).run()
+            at.number_input(key=f"done|{ctx_}|전공").set_value(30).run()
+            ks = keys_of(at)
+            check("화면: [E19] 배재 영역 부족 → 전공 버튼과 '교양 개설 과목 보기'(세부 입력 없음이라 영역을 미리 고르지 않음) + 고르라는 안내",
+                  "crs_go_전공" in ks and "crs_go_pick" in ks and "crs_go_교양필수" not in ks and "부족한 교양 영역을 골라 보세요(세부 항목까지 입력하면 바로 이어져요)" in html(at), str([k for k in ks if k.startswith("crs")]))
+            at.button(key="crs_go_전공").click().run()
+            check("화면: [E19] 전공 버튼 → 개설 과목 페이지에 전공 영역이 미리 선택됨, 안내 없음", at.selectbox(key="crs_area_w").value == "전공" and "부족한 교양 영역을 골라 보세요" not in html(at) and not at.exception)
+            at = nav(at, "remaining")
+            at.button(key="crs_go_pick").click().run()
+            check("화면: [E19] 교양 버튼 → 개설 과목 페이지로 이동만(영역 미리 고르지 않음, 직전 전공 선택은 그대로), 고르라는 안내, 영역을 고르면 안내가 사라짐",
+                  "부족한 교양 영역을 골라 보세요(세부 항목까지 입력하면 바로 이어져요)" in html(at) and at.session_state["keep"].get("crs_area") == "전공")
+            at.selectbox(key="crs_area_w").set_value("교선").run()
+            check("화면: [E19] 영역을 고르면 안내가 사라짐", "부족한 교양 영역을 골라 보세요" not in html(at))
+            at = nav(at, "remaining")
+            at.checkbox(key=f"kids_on|{ctx_}").check().run()
+            at.number_input(key=f"kid|{ctx_}|교양필수").set_value(11).run()
+            ks = keys_of(at)
+            check("화면: [E19] 세부 항목까지 입력하면 부족한 교양 세부 영역 버튼(교양_글로벌언어 등)이 생기고 교양 '고르세요' 버튼은 없다", "crs_go_교양_글로벌언어" in ks and "crs_go_교양_비전설계" in ks and "crs_go_pick" not in ks and "crs_go_교양필수" not in ks, str([k for k in ks if k.startswith("crs")]))
+            at.button(key="crs_go_교양_글로벌언어").click().run()
+            check("화면: [E19] 교양 세부 버튼 → 그 교양 영역(글로벌-언어)이 미리 선택됨", at.selectbox(key="crs_area_w").value == "교양_글로벌언어")
+            at = nav(pick(run(), "배재", 2023, "편입"), "remaining")
+            at.number_input(key=f"tot|{ctx_}").set_value(126).run()
+            at.number_input(key=f"done|{ctx_}|전공").set_value(40).run()
+            at.number_input(key=f"done|{ctx_}|교양").set_value(10).run()
+            ks = keys_of(at)
+            check("화면: [E19] 배재 편입은 교양 부족이어도 교양 버튼 없이 전공(편입 기준 45) 버튼만, 참고용 안내", "crs_go_전공" in ks and "crs_go_pick" not in ks and not [k for k in ks if k.startswith("crs_go_교양")]
+                  and "교양 영역별 결과가 참고용이라 교양 개설 과목 연결은 하지 않아요" in html(at), str([k for k in ks if k.startswith("crs")]))
+            at = nav(pick(run(), "배재", 2023, "신입"), "courses")
+            h = html(at)
+            check("화면: [E19] 개설 과목 목록에 약어 툴팁(전필·전선 title)과 영역 선택 도움말", 'title="전공필수">전필</abbr>' in h and 'title="전공선택">전선</abbr>' in h and "전필=전공필수" in " ".join(str(x.help) for x in at.selectbox))
         # 개설 과목 페이지(배재대 2026-2, 가공본이 있을 때만)
         if not CR.available():
             skip("개설 과목 화면 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
@@ -788,7 +870,7 @@ def cmd_app():
             at.selectbox(key="crs_area_w").set_value("공유혁신").run()
             h = html(at)
             check("화면: [개설 과목] 공유혁신 = 전공융합설계 32 + 비전설계 22 + 혁신교육과미래설계 1 = 55과목·99분반, BJ-032·033·034·035 안내, 전공탐색은 자료 없음 명시",
-                  "55과목 · 99분반" in h and "전공융합설계 · 32과목" in h and "비전설계 · 진로·취창업 · 15과목" in h and "혁신교육과미래설계 (전필, P/F) · 1과목" in h and all(f"BJ-0{n}" in texts(at.caption) for n in (32, 33, 34, 35)) and "찾지 못했어요" in texts(at.caption), f"{[k for k in ('55과목 · 99분반', '전공융합설계 · 32과목', '비전설계 · 진로·취창업 · 15과목', '혁신교육과미래설계 (전필, P/F) · 1과목') if k not in h]} {texts(at.caption)[:2]}")
+                  "55과목 · 99분반" in h and "전공융합설계 · 32과목" in h and "비전설계 · 진로·취창업 · 15과목" in h and '혁신교육과미래설계 (<abbr class="abbr" title="전공필수">전필</abbr>, P/F) · 1과목' in h and all(f"BJ-0{n}" in texts(at.caption) for n in (32, 33, 34, 35)) and "찾지 못했어요" in texts(at.caption), f"{[k for k in ('55과목 · 99분반', '전공융합설계 · 32과목', '비전설계 · 진로·취창업 · 15과목', '혁신교육과미래설계 (전필, P/F) · 1과목') if k not in h]} {texts(at.caption)[:2]}")
             at = nav(pick(run(), "배재", 2023, "편입"), "courses")
             check("화면: [개설 과목] 편입이면 필수과목 면제 안내 한 줄(과목별 면제 배지 없음)", "BJ-060" in html(at) and "면제 가능" not in html(at))
         at = nav(pick(run(), "목원", 2023, "신입"), "courses")
@@ -814,7 +896,7 @@ def cmd_app():
         at.run()
         h = html(at)
         check("화면: 규정 안내 페이지 — '확인 불가' 배지 + 겹치는 질문 → 체크리스트 안내 줄 (항목: 0학점 이수 필수), 근거 카드는 펼쳐서 표시",
-              "남은 학점 계산의 체크리스트에 관련 요건이 있을 수 있어요" in h and "0학점 이수 필수" in h and "근거 (2건)" in h and '<span class="num">[1]</span>' in h, h[:100])
+              "내 졸업요건의 체크리스트에 관련 요건이 있을 수 있어요" in h and "0학점 이수 필수" in h and "근거 (2건)" in h and '<span class="num">[1]</span>' in h, h[:100])
         Fake.badge = False
         at = nav(pick(run(), "배재", 2025, "신입"), "ask")
         at.text_input(key="q_ask").set_value("혁신교육과미래설계 꼭 들어야 해?")

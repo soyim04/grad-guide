@@ -1,6 +1,6 @@
 """졸업나침반 화면 페이지(7단계 새 디자인). 계산·조회·엔진은 기존 함수를 그대로 부르고, 여기서는 배치와 표시만 한다.
 
-페이지: 홈 · 학사 규정 안내 · 남은 학점 계산 · 학사 선택 비교 · 이번 학기 개설 과목 · (개발자 모드) 로그
+페이지: 홈 · 학사 규정 안내 · 내 졸업요건 · 학사 선택 비교 · 이번 학기 개설 과목 · (개발자 모드) 로그
 - 사이드바 입력은 바로 적용된다(저장 버튼 없음). 이수 학점·평점은 session_state 메모리에만 두고 디스크·로그에는 쓰지 않는다.
 - 페이지를 옮기면 그 페이지에서 그려지지 않은 위젯의 값은 Streamlit이 지우므로, 학점 입력은 `keep` 사전에 따로 복사해 두고 위젯 초기값으로 읽는다.
 - 학생 화면에는 응답 시간·비용·로그를 보이지 않는다. 주소에 `?dev=1`이 있을 때만 보인다.
@@ -23,7 +23,7 @@ UNIVS = list(S.BASE_DEPT)
 YEAR_CHOICES = [*S.YEARS, "모름", engine.OUT_OF_RANGE]
 LONG_ANSWER = 300  # 이 글자 수를 넘으면 첫 문단만 먼저 보여 주고 나머지는 접는다
 EXAMPLES = ["졸업하려면 총 몇 학점이 필요해?", "부전공은 몇 학점 이수해야 해?", "재수강은 어떻게 하나요?", "부전공과 복수전공 중 어느 쪽이 전공학점이 적어?"]
-PAGES = [("home", "홈", ":material/home:"), ("ask", "학사 규정 안내", ":material/forum:"), ("remaining", "남은 학점 계산", ":material/calculate:"),
+PAGES = [("home", "홈", ":material/home:"), ("ask", "학사 규정 안내", ":material/forum:"), ("remaining", "내 졸업요건", ":material/checklist:"),
          ("compare", "학사 선택 비교", ":material/compare_arrows:"), ("courses", "이번 학기 개설 과목", ":material/menu_book:")]
 DEV_PAGE = ("dev", "개발자 · 로그", ":material/terminal:")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
@@ -32,7 +32,7 @@ DISCLAIMER = "2022~2026학번 기준 · 최종 확인은 학과 사무실에서"
 PLACEHOLDER_DEPT = "학과를 선택하세요"
 GENERIC_DEPT = "목록에 없는 학과 (대학 공통 기준)"
 NO_AREA_NOTICE = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
-SUPPORT_LINE = "모든 학과가 규정 안내와 총 남은 학점을 쓸 수 있어요. 교양·전공 영역별 계산은 경영 계열 학과만 지원해요."
+SUPPORT_LINE = "모든 학과가 규정 안내와 졸업요건 확인을 쓸 수 있어요. 교양·전공 영역별 계산은 경영 계열 학과만 지원해요."
 
 
 # ---------- 공통 ----------
@@ -230,7 +230,7 @@ def show_checklist(sc, limit=None, title=True):
     else:
         md(checklist_html(items, limit))
         if limit is not None and len(items) > limit:
-            st.caption(f"그 밖에 {len(items) - limit}개 요건은 '남은 학점 계산'에서 볼 수 있어요.")
+            st.caption(f"그 밖에 {len(items) - limit}개 요건은 '내 졸업요건'에서 볼 수 있어요.")
     if na and limit is None:
         with st.expander(f"해당 없는 요건 {len(na)}개"):
             md(checklist_html(na))
@@ -274,7 +274,7 @@ def show_answer(out, log_id, key, hint=None, compact=False):
         else:
             md(U.callout("info", U.esc(b["text"])))
     if hint and any(b["kind"] == "확인불가" for b in out["badges"]):  # '확인 불가' 배지가 있을 때만(2026-11-09 승인 규칙)
-        md(U.callout("soft", "남은 학점 계산의 체크리스트에 관련 요건이 있을 수 있어요. (항목: " + U.esc(" · ".join(hint)) + ")"))
+        md(U.callout("soft", "내 졸업요건의 체크리스트에 관련 요건이 있을 수 있어요. (항목: " + U.esc(" · ".join(hint)) + ")"))
     with st.container(key=f"ans_{key}"):
         show_body(out["answer"])
     if out.get("calc_text"):
@@ -375,7 +375,7 @@ def remaining_state(sc, plan):
         rem = S.remaining(plan, done, total, kids)
     elif any_area and sc["entry"] != "편입":
         rem, fallback = S.remaining(plan, done, None, kids), True
-    return {"rem": rem, "fallback": fallback, "any_area": any_area, "areas_on": areas_on, "ctx": ctx}
+    return {"rem": rem, "fallback": fallback, "any_area": any_area, "areas_on": areas_on, "ctx": ctx, "kids_input": kids is not None}
 
 
 def unsupported_notice(plan):
@@ -400,7 +400,7 @@ def big_block(sc, st_):
     elif sc["entry"] == "편입" and st_["any_area"]:
         md(U.callout("info", "편입생은 편입 인정학점이 영역에 안 들어가서, 총 이수 학점을 먼저 입력해야 졸업까지 남은 학점을 알려 드릴 수 있어요."))
     else:
-        st.caption("총 이수 학점을 입력하면 졸업까지 남은 학점을 알려 드려요.")
+        st.caption("총 이수 학점을 입력하면 졸업까지 남은 학점을 알려 드려요. 학점을 몰라도 위 졸업요건은 확인할 수 있어요. 입력은 건너뛰어도 돼요.")
 
 
 def reference_lines(plan, rem):
@@ -420,9 +420,83 @@ def reference_lines(plan, rem):
     return lines
 
 
+ACCESS_GUIDE = {"배재": "학교 포털 '졸업자가진단' → 이수현황 표의 '소계'를 넣으세요."}
+ACCESS_GUIDE_DEFAULT = "학교 포털의 졸업사정(졸업 자가진단) 메뉴에서 확인하세요."
+
+
+def basis_rows(plan):
+    """입력 없이 보여 줄 영역 기준: (영역 표 행, 세부 항목 줄). 영역별 계산을 지원하면 영역·세부 항목, 한남·한밭은 기준표의 영역별 기준 그대로"""
+    if plan["tier"] in ("T1", "T2"):
+        rows = [[a["name"], S.fmt_basis(a["row"])] for a in plan["areas"]]
+        kids = [f"{c['항목']} {S.fmt_basis(c)}" for a in plan["areas"] for c in a["children"]]
+        return rows, kids
+    if plan["tier"] == "T3":
+        return [[r["항목"] + (f" ({r['이수유형']})" if r["이수유형"] else ""), S.fmt_basis(r)] for r in plan["ref_rows"]], []
+    return [], []
+
+
+def basis_html(plan):
+    rows, kids = basis_rows(plan)
+    if not rows:
+        return ""
+    out = U.table(["영역", "기준"], rows)
+    if kids:
+        out += details_html([U.esc(k) for k in kids], label="세부 항목 보기")
+    return out
+
+
+def access_guide(sc):
+    with st.expander("내 이수 학점은 어디서 보나요?"):
+        st.markdown(ACCESS_GUIDE.get(sc["univ"], ACCESS_GUIDE_DEFAULT))
+
+
+def go_courses(view=None, hint=None):
+    """개설 과목 페이지로 이동. view가 있으면 그 영역을 미리 고르고, hint가 있으면 안내를 띄운다(영역을 직접 고르면 사라진다)"""
+    kp = keep()
+    if view:
+        kp["crs_area"] = view
+    kp["crs_hint"] = hint
+    st.session_state.pop("crs_area_w", None)
+    st.session_state["page"] = "courses"
+
+
+def courses_link_block(sc, stt):
+    """내 졸업요건 맨 아래: 부족한 영역의 개설 과목으로 연결(배재 시범). 다른 대학은 버튼 없이 안내만"""
+    if sc["univ"] != "배재":
+        with st.container(key="card_courses_soon"):
+            md('<div class="card-h">이번 학기 개설 과목</div>')
+            st.caption("개설 과목 연결은 배재대에서 시범 제공 중이에요.")
+        return
+    if not CR.available():
+        card_courses(sc)
+        return
+    with st.container(key="card_courses"):
+        md('<div class="card-h">이번 학기 개설 과목</div>')
+        rem = stt["rem"]
+        if rem is None or not stt["any_area"]:
+            st.caption("영역별 이수 학점까지 입력하면 부족한 영역의 개설 과목으로 바로 이어 드려요.")
+            st.button("개설 과목 보기", key="crs_go_all", on_click=go_courses, width="stretch")
+            return
+        transfer = sc["entry"] == "편입"
+        targets, pick = CR.deficit_targets(sc["year"], rem["areas"], transfer, stt["kids_input"])
+        if targets or pick:
+            st.caption("부족한 영역의 이번 학기 개설 과목 보기")
+        for v in targets:
+            st.button(f"{CR.AREA_LABEL[v]} 개설 과목 보기", key=f"crs_go_{v}", on_click=go_courses, args=(v,), width="stretch")
+        if pick:
+            st.button("교양 개설 과목 보기", key="crs_go_pick", on_click=go_courses, args=(None, CR.PICK_HINT), width="stretch")
+            st.caption(CR.PICK_HINT)
+        if not targets and not pick:
+            st.caption("입력한 영역은 기준을 채웠어요. 궁금하면 개설 과목을 둘러볼 수 있어요.")
+            st.button("개설 과목 보기", key="crs_go_all", on_click=go_courses, width="stretch")
+        if transfer:
+            st.caption("편입생은 교양 영역별 결과가 참고용이라 교양 개설 과목 연결은 하지 않아요. 전공만 이어 드려요.")
+
+
 def card_remaining_home(sc):
+    """홈 카드: 입력 없이 졸업요건 요약이 먼저, 학점 계산은 선택(접기)"""
     with st.container(key="card_home_rem"):
-        md('<div class="card-h">남은 학점 계산</div>')
+        md('<div class="card-h">내 졸업요건</div>')
         if not need_year(sc) or not need_dept(sc):
             return
         plan = plan_for(sc)
@@ -432,15 +506,21 @@ def card_remaining_home(sc):
             return
         ctx = ctx_of(sc)
         generic_note(sc)
-        num("지금까지 이수한 총 학점", f"tot|{ctx}", f"home_tot|{ctx}")
-        stt = remaining_state(sc, plan)
-        big_block(sc, stt)
+        md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(plan["grad"]))}</b></div>')
+        rows, _ = basis_rows(plan)
+        if rows:
+            md('<div class="ck-src">' + U.esc(" · ".join(f"{n} {b}" for n, b in rows)) + "</div>")
         show_checklist(sc, limit=2)
-        st.button("영역별 이수 현황 보기", key="home_to_rem", on_click=goto, args=("remaining",), width="stretch")
+        st.button("내 졸업요건 자세히 보기", key="home_to_rem", on_click=goto, args=("remaining",), width="stretch")
+        stt = remaining_state(sc, plan)
+        with st.expander("이수 학점을 알면 남은 학점도 계산해 드려요 (선택)", expanded=keep().get(f"tot|{ctx}") is not None):
+            num("지금까지 이수한 총 학점", f"tot|{ctx}", f"home_tot|{ctx}")
+            stt = remaining_state(sc, plan)
+            big_block(sc, stt)
 
 
 def page_remaining(sc):
-    page_title("남은 학점 계산", "총 이수 학점만 넣어도 졸업까지 남은 학점을 알려 드려요. 영역별 입력은 선택이에요.")
+    page_title("내 졸업요건", "정보만 고르면 졸업요건이 바로 보여요. 이수 학점을 알면 남은 학점도 계산해 드려요(선택).")
     if not need_year(sc) or not need_dept(sc):
         return
     univ, year = sc["univ"], sc["year"]
@@ -456,14 +536,25 @@ def page_remaining(sc):
     ctx = ctx_of(sc)
     areas_on = plan["tier"] in ("T1", "T2")
     stt = remaining_state(sc, plan)
-    with st.container(key="card_rem_main"):
+    cap_row = S.transfer_cap_row(univ, sc["transfer_grade"], grad["값"]) if transfer and sc.get("transfer_grade") else None
+    # ① 입력 없이 바로 보이는 졸업요건
+    with st.container(key="card_rem_req"):
+        md('<div class="card-h">졸업하려면 이것들을 채워야 해요</div>')
         md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')  # 대학·학번·학과는 페이지 제목에 있어 반복하지 않는다
-        cap_row = S.transfer_cap_row(univ, sc["transfer_grade"], grad["값"]) if transfer and sc.get("transfer_grade") else None
         with st.expander("근거 보기"):
             st.markdown(f"`{grad['행ID']}` · 이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
             if cap_row:
                 st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n`{cap_row['행ID']}` · {cap_row['출처조항']} · 쪽 {cap_row['출처쪽']} · 등급 {cap_row['출처등급']}")
         generic_note(sc)
+        if plan["tier"] == "T3":
+            md('<div class="ck-src">영역별 남은 학점은 계산하지 않고, 규정 표의 영역별 기준만 보여 드려요.</div>')
+        bh = basis_html(plan)
+        if bh:
+            md(bh)
+        show_checklist(sc)
+    # ② 이수 학점을 알면(선택)
+    with st.container(key="card_rem_main"):
+        md('<div class="card-h">이수 학점을 알면 남은 학점을 계산해 드려요 (선택)</div>')
         if transfer:  # 안내 상자 하나(인정학점 상한이 있으면 괄호로 함께)
             cap = f"(최대 {cap_row['값']}학점)" if cap_row else ""
             md(U.callout("info", f"편입 인정학점{cap}도 총 이수 학점에 포함해 넣어 주세요. 영역 구분은 학과에서 확인하세요."))
@@ -476,8 +567,7 @@ def page_remaining(sc):
                                       f'({U.esc(plan["transfer"]["grade"])} 편입, 전적대학 인정 전공 학점 포함). 행 {U.esc(plan["transfer"]["row"]["행ID"])}'))
         if not areas_on:
             md(unsupported_notice(plan))
-    with st.container(key="card_rem_check"):
-        show_checklist(sc)
+        access_guide(sc)  # ③ 내 이수 학점은 어디서 보나요?
     if areas_on:
         with st.expander("영역별 확인 (선택)"):
             st.caption((S.TRANSFER_MAJOR_NOTE if plan.get("transfer") else
@@ -509,16 +599,12 @@ def page_remaining(sc):
                         st.dataframe(pd.DataFrame([{"항목": k["name"], "기준": S.fmt_value(k["row"]), "이수": k["done"], "남은 학점": k["remaining"]} for k in shown]),
                                      hide_index=True, width="stretch")
     lines = reference_lines(plan, stt["rem"])
-    if lines or plan["tier"] == "T3":
+    if lines:
         with st.expander("참고"):
             for ln in lines:
                 st.markdown(f"- {ln}")
-            if plan["tier"] == "T3":
-                rows = [{"항목": r["항목"], "이수유형": r["이수유형"] or "-", "기준": S.fmt_value(r), "조건": r["조건"], "행ID": r["행ID"], "출처": r["출처조항"][:60]}
-                        for r in plan["ref_rows"]]
-                st.markdown("기준표의 영역별 기준(남은 학점은 계산하지 않아요)")
-                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-    card_courses(sc)
+    # ④ 부족한 영역의 개설 과목으로 연결(배재 시범)
+    courses_link_block(sc, stt)
 
 
 # ---------- 학사 선택 비교 ----------
@@ -624,7 +710,7 @@ def course_html(c, days, show_grade=False):
     """과목 하나(분반 목록은 접기). 강한 제한 문구가 있는 분반 수는 배지로, 비고 원문은 모두 작은 글씨로 보여 준다"""
     secs = CR.filter_sections(c, days)
     nlim = CR.remaining_count(secs)
-    head = f'<b>{U.esc(c["name"])}</b> · {U.esc(c["credit"])}학점' + (f' · {U.esc(c["kind"])}' if c["kind"] in ("전필", "전선") else "") + f' · 분반 {len(secs)}개'
+    head = f'<b>{U.esc(c["name"])}</b> · {U.esc(c["credit"])}학점' + (f' · {U.abbr_html(c["kind"])}' if c["kind"] in ("전필", "전선") else "") + f' · 분반 {len(secs)}개'
     if show_grade and c.get("grade"):
         head += f' · 대상 {U.esc(c["grade"])}'
     if nlim:
@@ -668,6 +754,8 @@ def show_courses(sc):
         return
     with st.container(key="card_courses"):
         md('<div class="card-h">이번 학기 개설 과목 (배재대)</div>')
+        if keep().get("crs_hint"):
+            md(U.callout("info", U.esc(keep()["crs_hint"])))
         is_base = sc["dept"] == S.BASE_DEPT["배재"]
         views = [v for v in CR.view_areas(year) if v != "전공" or is_base]
         c1, c2 = st.columns([1, 1])
@@ -675,8 +763,11 @@ def show_courses(sc):
             if _kept_widget("check", "다른 학과 전공(공유대학 가상) 과목도 보기", "crs_virtual", "crs_virtual_w"):
                 views = views + ["타학과전공"]
             kept = keep().get("crs_area")
+            def _sync_area():
+                keep()["crs_area"] = st.session_state["crs_area_w"]
+                keep()["crs_hint"] = None
             view = st.selectbox("영역", views, index=views.index(kept) if kept in views else 0, format_func=lambda v: CR.AREA_LABEL[v], key="crs_area_w",
-                                on_change=lambda: keep().__setitem__("crs_area", st.session_state["crs_area_w"]))
+                                on_change=_sync_area, help=U.ABBR_HELP)
         with c2:
             days = _kept_widget("multi", "요일 (고르지 않으면 전체)", "crs_days", "crs_days_w", options=list(CR.DAYS[:6]) + ["시간 미정"])
             grades = _kept_widget("multi", "대상 학년 (전공만, 고르지 않으면 전체)", "crs_grades", "crs_grades_w", options=CR.GRADES) if view == "전공" else []
@@ -697,7 +788,7 @@ def show_courses(sc):
         courses = [c for c in CR.group_courses([s for s in pool if s["과목코드"] not in done_all]) if CR.filter_sections(c, days) and (not grades or c["grade"] in grades)]
         nsec = sum(len(CR.filter_sections(c, days)) for c in courses)
         nexcl = len(set(names) & done_all)
-        md(f'<div class="card-sub"><b>{U.esc(CR.AREA_LABEL[view])}</b> · {len(courses)}과목 · {nsec}분반'
+        md(f'<div class="card-sub"><b>{U.abbr_html(CR.AREA_LABEL[view])}</b> · {len(courses)}과목 · {nsec}분반'
            + (f' · 요일 {U.esc(", ".join(days))}' if days else "") + (f' · {U.esc(", ".join(grades))}' if grades else "") + (f' · 이수 제외 {nexcl}과목' if nexcl else "") + "</div>")
         if view in COURSE_NOTES:
             st.caption(COURSE_NOTES[view])
@@ -713,7 +804,7 @@ def show_courses(sc):
         parts = ""
         for g, cs in groups.items():
             if g and (len(groups) > 1 or view in ("공유혁신", "전공")):
-                parts += f'<div class="crs-group">{U.esc(g)} · {len(cs)}과목</div>'
+                parts += f'<div class="crs-group">{U.abbr_html(g)} · {len(cs)}과목</div>'
             parts += "".join(course_html(c, days, view == "전공") for c in cs)
         if parts:
             md(parts)
@@ -727,7 +818,16 @@ def page_courses(sc):
 
 # ---------- 홈·규정 안내 ----------
 
+def home_steps():
+    with st.container(key="card_steps"):
+        md('<div class="steps">'
+           '<div class="step"><b>① 내 정보 고르기</b><br>왼쪽에서 대학·학번·학과·입학 구분을 골라요.</div>'
+           '<div class="step"><b>② 졸업요건 보기</b><br>학점을 몰라도 졸업학점과 채워야 할 요건이 바로 보여요.</div>'
+           '<div class="step"><b>③ 학점을 알면</b><br>남은 학점과 이번 학기 개설 과목까지 이어 드려요.</div></div>')
+
+
 def page_home(sc):
+    home_steps()
     c1, c2, c3 = st.columns(3, gap="medium")
     with c1:
         card_remaining_home(sc)
@@ -750,7 +850,8 @@ def support_table():
         md('<div class="card-h">지원 범위</div>')
         md(U.table(["기능", "경영 계열 학과", "그 외 학과"], [
             ["규정 안내", "지원", "지원"],
-            ["총 남은 학점", "지원", "지원"],
+            ["졸업요건 확인 (학점 입력 없이)", "지원", "지원"],
+            ["남은 학점 계산 (선택)", "지원", "지원"],
             ["학점 외 요건", "지원", "지원"],
             ["영역별 남은 학점", "지원 (각주 1)", "지원 안 함"],
             ["학사 선택 비교", "지원", "일부 (각주 2)"],

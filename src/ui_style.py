@@ -6,6 +6,7 @@ HTML 문자열에는 빈 줄·4칸 이상 들여쓰기를 넣지 않는다(마�
 """
 
 import html
+import re
 
 import streamlit as st
 
@@ -118,10 +119,25 @@ details.crs summary{cursor:pointer;line-height:1.7;}
 .crs-sec{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem;font-size:.93rem;line-height:1.6;}
 .crs-memo{font-size:.8rem;color:var(--mute);line-height:1.5;margin-top:.1rem;word-break:keep-all;}
 .crs-group{font-weight:800;color:var(--pt);margin:1rem 0 .2rem;font-size:.98rem;}
+/* 약어 툴팁 · 홈 3단계 */
+abbr.abbr{text-decoration:underline dotted;text-underline-offset:3px;cursor:help;}
+.steps{display:flex;gap:.8rem;flex-wrap:wrap;}
+.step{flex:1;min-width:210px;background:var(--soft2);border:1px solid var(--line);border-radius:12px;padding:.7rem .9rem;font-size:.95rem;line-height:1.55;}
+.step b{color:var(--pt);}
 /* 입학 구분 라디오를 조각 모양으로 */
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>
 """
+
+
+ABBR = {"교필선": "교양필수선택(영역을 골라 듣는 교양)", "교필": "교양필수", "교선": "교양선택", "전필": "전공필수", "전선": "전공선택", "일선": "일반선택"}
+_ABBR_RE = re.compile(r"(?<![가-힣])(교필선|교필|교선|전필|전선|일선)(?![가-힣])")
+ABBR_HELP = " · ".join(f"{k}={v}" for k, v in ABBR.items())
+
+
+def abbr_html(text):
+    """이스케이프한 글 속 이수구분 약어(교필·교필선·교선·전필·전선·일선)에 마우스를 올리면 풀이가 보이게 한다"""
+    return _ABBR_RE.sub(lambda m: f'<abbr class="abbr" title="{esc(ABBR[m.group(1)])}">{m.group(1)}</abbr>', esc(text))
 
 
 def inject():

@@ -85,6 +85,14 @@ def fmt_value(r):
     return f"{v}{r['단위']} {r['비교']}".strip()
 
 
+def fmt_basis(r):
+    """영역 기준을 학생이 읽는 말로. %로 정해진 값은 무엇의 %인지 보이게 한다(예: 졸업학점의 25% 이상)"""
+    if r["값"] and r["단위"] == "%":
+        v = r["값"] + (f"~{r['값_최대']}" if r["값_최대"] else "")
+        return f"졸업학점의 {v}% {r['비교']}".strip()
+    return fmt_value(r)
+
+
 def source_of(r):
     return {"id": r["행ID"], "source": r["출처조항"], "pages": r["출처쪽"], "file": r["출처파일"], "grade": r["출처등급"], "status": r["상태"]}
 
