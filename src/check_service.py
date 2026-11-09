@@ -379,8 +379,10 @@ def cmd_citations():
 
 
 def cmd_app():
-    """화면 스모크(streamlit AppTest). 엔진은 가짜, 로그 DB는 임시 파일이라 API 비용 0. 8단계 동결 확인에도 쓴다."""
+    """화면 스모크(streamlit AppTest). 엔진은 가짜, 로그 DB는 임시 파일이라 API 비용 0. 8단계 동결 확인에도 쓴다.
+    새 디자인(졸업나침반): 메뉴 5개 페이지·홈 요약 카드·입력값 유지·홈=페이지 값 일치·개발자 모드 분리를 본다."""
     import os
+    import re
     import sqlite3
     import tempfile
     os.environ["SERVICE_LOG_DB"] = os.path.join(tempfile.mkdtemp(), "log.db")
@@ -406,8 +408,11 @@ def cmd_app():
     engine.Engine = Fake
     st.cache_resource.clear()
     try:
-        def run():
-            return AppTest.from_file(APP, default_timeout=120).run()
+        def run(dev=False):
+            at = AppTest.from_file(APP, default_timeout=120)
+            if dev:
+                at.query_params["dev"] = "1"
+            return at.run()
 
         def pick(at, univ=None, year=None, entry=None):
             if univ:
@@ -420,116 +425,207 @@ def cmd_app():
             at.run()
             return at
 
-        LOG_METRICS = {"질문 수", "총 비용($)", "평균 응답(초)", "도움이 됐다", "도움이 안 됐다"}  # 로그 탭의 지표는 남은 학점 화면과 무관하다
-
-        def metrics(at):
-            return {x.label: x.value for x in at.metric if x.label not in LOG_METRICS}
+        def nav(at, page):
+            at.sidebar.button(key=f"nav_{page}").click()
+            at.run()
+            return at
 
         def texts(els):
             return " ".join(e.value for e in els)
+
+        def html(at):  # 화면에 나온 모든 마크다운(HTML 부품 포함)
+            return texts(at.markdown) + " " + texts(at.caption)
 
         def expander(at, label):
             hits = [e for e in at.expander if e.label == label]
             return hits[0] if hits else None
 
+        def big(at):  # 큰 숫자 '졸업까지 남은 학점'
+            m = re.findall(r'class="bignum">([\d.]+)<', html(at))
+            return m[0] if m else None
+
+        def area_sum(at):
+            return {x.label: x.value for x in at.metric}.get("영역별 남은 학점의 합(참고)")
+
         at = run()
-        check("화면: 첫 화면 예외 없음·탭 4개", not at.exception and [t.label for t in at.tabs] == ["규정 안내", "남은 학점", "학사 선택 비교", "로그"], str([e.value for e in at.exception]))
+        labels = [b.label for b in at.sidebar.button]
+        check("화면: 첫 화면 예외 없음·홈·메뉴 5개(개발자 메뉴 없음)", not at.exception and len(labels) == 5 and labels[0] == "홈" and "학사 규정 안내" in labels
+              and "남은 학점 계산" in labels and "학사 선택 비교" in labels and labels[4].startswith("이번 학기 개설 과목") and "준비 중" in labels[4], str(labels))
+        import re as _re
+        import ui_style
+        hide_rules = [r for r in _re.findall(r"([^{}]+)\{([^{}]*)\}", _re.sub(r"/\*.*?\*/", "", ui_style.CSS, flags=_re.S))
+                      if "display:none" in r[1].replace(" ", "")]
+        hidden = " ".join(r[0] for r in hide_rules)
+        check("화면: 사이드바 펼치기·접기 버튼과 도구 막대·헤더를 숨기는 CSS 규칙이 없다(메뉴·배포 버튼만 개별로 숨김)",
+              not any(k in hidden for k in ("stExpandSidebarButton", "stSidebarCollapseButton", "stToolbar\"", "stToolbarActions", "stHeader\"", "stSidebar\"", "stSidebarCollapsedControl"))
+              and "stMainMenu" in hidden and "stAppDeployButton" in hidden, hidden[:120])
+        src_app = (ROOT / "src" / "app.py").read_text(encoding="utf-8")
+        check("화면: set_page_config에 initial_sidebar_state=\"expanded\"", 'initial_sidebar_state="expanded"' in src_app)
+        h = html(at)
+        check("화면: 서비스명·한 줄 소개·면책·저장 안내 표시", "졸업나침반" in texts(at.sidebar.markdown) and "5개 대학의 학사 규정을 근거로 답변해요" in texts(at.sidebar.markdown)
+              and "2022~2026학번 기준 · 최종 확인은 학과 사무실에서" in h and "입력한 학점·평점은 저장하지 않아요" in texts(at.sidebar.markdown), h[:60])
+        check("화면: 홈 요약 카드 4개(남은 학점·규정 질문·학사 선택 비교·개설 과목)", all(k in h for k in ("남은 학점 계산", "학사 규정 질문", "학사 선택 비교", "이번 학기 개설 과목")))
+        check("화면: 학번 선택지는 2022~2026 + 모름 + 범위 밖(자유 입력 없음)", at.sidebar.selectbox(key="year").options == ["2022학번", "2023학번", "2024학번", "2025학번", "2026학번", "모름", "범위 밖"]
+              and not at.sidebar.number_input)
         bad = []
         for u in S.BASE_DEPT:
             for y in [*S.YEARS, "모름", "범위 밖"]:
                 for en in ("신입", "편입"):
                     pick(at, u, y, en)
-                    if at.exception:
-                        bad.append((u, y, en, at.exception[0].value[:60]))
-        check("화면: 대학 5 × 학번 선택 7 × 입학 구분 2 = 70조합 예외 없음", not bad, str(bad[:3]))
-        # 남은 학점: 배재 2023 · 편입 · 총 125 (이번 화면 개편의 기준 사례)
+                    for pg in ("home", "ask", "remaining", "compare", "courses"):
+                        nav(at, pg)
+                        if at.exception:
+                            bad.append((u, y, en, pg, at.exception[0].value[:60]))
+                    nav(at, "home")
+        check("화면: 대학 5 × 학번 선택 7 × 입학 구분 2 × 페이지 5 = 350조합 예외 없음", not bad, str(bad[:3]))
+        # 홈 = 남은 학점 페이지: 배재 2023 · 편입 · 총 125 → 5
         at = pick(run(), "배재", 2023, "편입")
         side = texts(at.sidebar.info)
         check("화면: 배재 편입이면 학번 아래에 안내(2년 앞 학번·3학년 편입 기준·2023학번 예시)", "2년 앞 학번" in side and "3학년 편입 기준" in side and "2023학번" in side, side[:80])
         e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
         check("화면: 배재 편입 안내의 근거 접기(제17조 ⑦·제64조 ④·해석 명시)", len(e) == 1 and "제17조 ⑦" in texts(e[0].markdown) and "제64조 ④" in texts(e[0].markdown) and "해석" in texts(e[0].markdown))
+        check("화면: 총 이수 학점을 넣기 전에는 큰 숫자 없음(시안 값 하드코딩 없음)", big(at) is None and "총 이수 학점을 입력하면" in html(at))
+        at.number_input(key="home_tot|배재|2023|IT경영정보학과").set_value(125)
+        at.run()
+        home_big = big(at)
+        at.button(key="home_to_rem").click()
+        at.run()
+        check("화면: 홈 큰 숫자 = 남은 학점 페이지 큰 숫자(5), 홈에서 넣은 125가 페이지 입력칸에 유지",
+              home_big == "5" and big(at) == "5" and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125, f"{home_big} {big(at)}")
+        check("화면: 큰 숫자는 하나뿐(st.metric 없음), 편입 안내 표시, 근거는 접기",
+              not at.metric and "편입 인정학점도 총 이수 학점에 포함" in html(at) and expander(at, "근거 보기") is not None and "130학점 이상" in html(at))
+        at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(120)
+        at.run()
+        nav(at, "home")
+        check("화면: 페이지에서 바꾼 값(120)이 홈에도 반영(10)", big(at) == "10", str(big(at)))
+        nav(at, "remaining")
         at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(125)
         at.run()
-        m = metrics(at)
-        check("화면: 배재 2023 편입 총 125 → 큰 숫자 '졸업까지 남은 학점' 5 하나뿐", m == {"졸업까지 남은 학점": "5"}, str(m))
-        check("화면: 편입 안내(편입 인정학점도 총 이수 학점에 포함) 표시", "편입 인정학점도 총 이수 학점에 포함" in texts(at.info))
-        check("화면: 맨 위 근거는 접기('근거 보기'), 졸업학점 줄은 한 줄", expander(at, "근거 보기") is not None and any("졸업학점 **130학점 이상**" in x.value for x in at.markdown))
-        check("화면: 노란 경고(합 불일치)가 맨 위에 뜨지 않는다", not any("34" in w.value or "합이 안 맞는" in w.value for w in at.warning), texts(at.warning)[:80])
+        # 영역 입력 유지·참고 문구
         at.number_input(key="done|배재|2023|IT경영정보학과|교양").set_value(5)
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(48)
         at.run()
-        m = metrics(at)
-        check("화면: 영역 입력 후에도 큰 숫자는 5, 영역별 합 49는 '(참고)' 이름으로 접기 안에만", m.get("졸업까지 남은 학점") == "5" and m.get("영역별 남은 학점의 합(참고)") == "49"
-              and expander(at, "영역별 결과 (참고)") is not None, str(m))
+        check("화면: 영역 입력 후에도 큰 숫자는 5, 영역별 합 49는 '(참고)' 이름으로 접기 안에만", big(at) == "5" and area_sum(at) == "49" and expander(at, "영역별 결과 (참고)") is not None, f"{big(at)} {area_sum(at)}")
         ref = expander(at, "참고")
         rt = texts(ref.markdown) if ref else ""
         check("화면: '참고' 접기에 표 합계 불일치(34↔36)와 영역 미지정 학점 28을 쉬운 말로", "34학점" in rt and "36학점" in rt and "28학점" in rt and "학생이 할 일은 없어요" in rt, rt[:120])
-        check("화면: 편입이면 영역별 확인은 참고용 안내", "참고용이에요" in " ".join(c.value for c in at.caption))
-        check("화면: 개설 과목 자리 표시", any("개설 과목" in x.value for x in at.markdown))
-        # 편입 + 영역만 입력(총 비움) → 큰 숫자를 내지 않고 총 입력 요청
+        check("화면: 편입이면 영역별 확인은 참고용 안내", "참고용이에요" in texts(at.caption))
+        check("화면: 개설 과목 자리 표시(준비 중)", "이번 학기 개설 과목" in html(at) and "준비 중" in html(at))
+        nav(at, "home")
+        nav(at, "remaining")
+        check("화면: 페이지를 옮겼다 와도 영역 입력(교양 5·전공 48)과 총 이수 학점(125) 유지",
+              at.number_input(key="done|배재|2023|IT경영정보학과|교양").value == 5 and at.number_input(key="done|배재|2023|IT경영정보학과|전공").value == 48
+              and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125)
+        # 편입 + 영역만 입력(총 비움) → 큰 숫자 없이 총 입력 요청
         at = pick(run(), "배재", 2024, "편입")
+        nav(at, "remaining")
         at.number_input(key="done|배재|2024|IT경영정보학과|교양").set_value(5)
         at.run()
-        check("화면: 편입 + 영역만 입력하면 큰 숫자 없이 '총 이수 학점을 먼저' 안내", not metrics(at) and "총 이수 학점을 먼저 입력" in texts(at.info), str(metrics(at)))
+        check("화면: 편입 + 영역만 입력하면 큰 숫자 없이 '총 이수 학점을 먼저' 안내", big(at) is None and "총 이수 학점을 먼저 입력" in html(at), str(big(at)))
         # 신입: 총 비움 + 영역 입력 → 영역 합으로 계산(충남 2024: 30+80+5=115 → 130-115=15)
         at = pick(run(), "충남", 2024, "신입")
+        nav(at, "remaining")
         ks = [k for k in (x.key for x in at.number_input) if k.startswith("done|충남|2024|경영학부")]
         for k, v in zip(ks, (30, 80, 5)):
             at.number_input(key=k).set_value(v)
         at.run()
-        m = metrics(at)
-        check("화면: 신입은 총 칸이 비면 영역 합(115)으로 계산 → 15 + 안내 한 줄", len(ks) == 3 and m.get("졸업까지 남은 학점") == "15" and m.get("영역별 남은 학점의 합(참고)") == "17"
-              and any("영역 입력의 합(115학점)" in c.value for c in at.caption), str(m))
+        check("화면: 신입은 총 칸이 비면 영역 합(115)으로 계산 → 15 + 안내 한 줄", len(ks) == 3 and big(at) == "15" and area_sum(at) == "17" and "영역 입력의 합(115학점)" in html(at), f"{big(at)} {area_sum(at)}")
         at.number_input(key="tot|충남|2024|경영학부").set_value(120)
         at.run()
-        check("화면: 총 이수 학점을 넣으면 그 값이 우선(130−120=10)", metrics(at).get("졸업까지 남은 학점") == "10")
+        check("화면: 총 이수 학점을 넣으면 그 값이 우선(130−120=10)", big(at) == "10")
         # 사이드바 편입 안내: 학교별, 신입이면 없음
         for u, want, has_basis in (("한남", "2년 앞 학번", True), ("한밭", "확인하지 못했어요", False), ("충남", "확인하지 못했어요", False), ("목원", "확인하지 못했어요", False)):
             at = pick(run(), u, 2023, "편입")
             e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
             check(f"화면: {u} 편입 안내('{want}')·근거 접기 {'있음' if has_basis else '없음'}", want in texts(at.sidebar.info) and bool(e) == has_basis, texts(at.sidebar.info)[:60])
         check("화면: 신입이면 사이드바 편입 안내 없음", not pick(run(), "배재", 2023, "신입").sidebar.info)
-        # 한밭(T3)·경영 계열 외 학과(T0): 총 입력만, 참고에 기준표
-        at = pick(run(), "한밭", 2023, "신입")
-        at.number_input(key="tot|한밭|2023|융합경영학과").set_value(100)
+        # 미지원 안내: 한밭·한남(T3), 경영 계열 외 학과 / 지원: 배재·충남
+        for u in ("한밭", "한남"):
+            at = pick(run(), u, 2023, "신입")
+            nav(at, "remaining")
+            at.number_input(key=f"tot|{u}|2023|{S.BASE_DEPT[u]}").set_value(100)
+            at.run()
+            check(f"화면: {u}(T3) 영역별 미지원 안내 + 총 100 → 졸업까지 남은 학점·참고 표", "영역별 남은 학점은 이 조건에서 지원하지 않아요" in html(at) and big(at) is not None
+                  and expander(at, "참고") is not None and not at.exception and expander(at, "영역별 확인 (선택)") is None, str(big(at)))
+        at = pick(run(), "배재", 2023, "신입")
+        at.sidebar.radio(key="deptkind_배재").set_value("그 외 학과")
         at.run()
-        check("화면: 한밭(T3) 총 100 → 졸업까지 남은 학점 표시·참고 표", metrics(at).get("졸업까지 남은 학점") is not None and expander(at, "참고") is not None and not at.exception)
-        # 비교 탭
-        at = pick(run(), "목원", 2022, "신입")
-        at.sidebar.radio(key="deptkind_목원").set_value("경영학부 (경영 계열)")
-        at.run()
-        txt = " ".join(x.value for x in at.success)
-        check("화면: 비교 목원 2022 복수전공이 6학점 적음", "복수전공" in txt and "6학점" in txt, txt)
-        # 규정 안내: 질문 → 근거 카드 번호, 체크리스트 안내 줄
+        nav(at, "remaining")
+        check("화면: 경영 계열 외 학과는 영역별 미지원 안내(오류·빈 화면 아님)", not at.exception and "영역별 남은 학점은 이 조건에서 지원하지 않아요" in html(at) and expander(at, "영역별 확인 (선택)") is None, html(at)[:80])
+        check("화면: 배재 경영 계열은 영역별 미지원 안내 없음", "영역별 남은 학점은 이 조건에서 지원하지 않아요" not in html(nav(pick(run(), "배재", 2023, "신입"), "remaining")))
+        # 체크리스트: 초록 체크 없음, 배지로 표시
+        at = nav(pick(run(), "배재", 2025, "신입"), "remaining")
+        h = html(at)
+        check("화면: 체크리스트에 초록 체크(✅)가 없고 '요건/없음/확인 불가/해당 없음' 배지만 쓴다",
+              "✅" not in h and "✓" not in h and "b-req" in h and "학점 외 이수 요건" in h and ("확인 불가 · 학과 확인" in h or "b-none" in h or "b-na" in h), h[:80])
+        # 학사 선택 비교: 홈 카드·페이지 값이 S.compare 결과와 같다(하드코딩 없음)
+        for u, y, d in (("배재", 2024, None), ("한남", 2023, None), ("목원", 2022, "경영학부")):
+            at = pick(run(), u, y, "신입")
+            if d:
+                at.sidebar.radio(key=f"deptkind_{u}").set_value(f"{d} (경영 계열)")
+                at.run()
+            r = S.compare(u, y, S.BASE_DEPT[u])
+            hh = html(at)
+            ok = r["ok"] and all(f"{t['total']:g}학점" in hh for t in r["table"] if t["total"] is not None) and (not r["less"] or (r["less"] in hh and f"{r['diff']:g}학점" in hh))
+            at2 = nav(at, "compare")
+            h2 = html(at2)
+            can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
+            ok2 = all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and "근거 행" in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
+            check(f"화면: {u} {y} 비교표·결론이 홈 카드와 페이지 모두 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok and ok2, hh[:60])
+        # 개설 과목 자리
+        at = nav(pick(run(), "배재", 2023, "신입"), "courses")
+        check("화면: 배재 개설 과목은 준비 중 카드, 임의 과목 없음", "준비 중" in html(at) and "지원하지 않아요" not in html(at) and not at.dataframe)
+        at = nav(pick(run(), "목원", 2023, "신입"), "courses")
+        check("화면: 배재 외 대학 개설 과목은 '지원하지 않아요' 안내", "개설 과목 안내를 아직 지원하지 않아요" in html(at) and not at.exception)
+        # 규정 안내: 홈 카드에서 질문 → 근거 카드 번호·배지, 학생 화면에 비용·응답 시간 없음
         calls.clear()
         at = pick(run(), "한남", 2023, "신입")
-        at.text_input(key="q_input").set_value("졸업학점 몇 학점이야?")
+        at.text_input(key="q_home").set_value("졸업학점 몇 학점이야?")
         [b for b in at.button if b.label == "질문하기"][0].click()
         at.run()
+        h = html(at)
+        check("화면: 홈 카드 질문 처리(사이드바 값 전달)·확인 불가 노란 배지·접기", len(calls) == 1 and calls[0][1:3] == ("한남", 2023) and "callout-warn" in h and "확인 불가" in h
+              and any("자세히 보기" in x.label for x in at.expander), h[:80])
         cards = [x for x in at.expander if x.label.startswith("근거 보기 (")]
         ct = texts(cards[0].markdown) if cards else ""
-        check("화면: 질문 처리(사이드바 값 전달)·배지·접기·근거 카드에 원래 번호([1]·[3])", len(calls) == 1 and calls[0][1:3] == ("한남", 2023) and len(at.warning) >= 1
-              and any("자세히 보기" in x.label for x in at.expander) and "**[1] 한남 기준표" in ct and "**[3] 학칙" in ct, ct[:80])
-        check("화면: 체크리스트와 안 겹치는 질문에는 안내 줄이 안 붙는다('확인 불가' 배지가 있어도)", "체크리스트에 관련 요건" not in texts(at.info))
-        at = pick(run(), "배재", 2025, "신입")
-        at.text_input(key="q_input").set_value("혁신교육과미래설계 꼭 들어야 해?")
+        check("화면: 근거 카드에 원래 번호([1]·[3])·조항·쪽·현행·등급", '<span class="num">[1]</span>' in ct and '<span class="num">[3]</span>' in ct and "제5조" in ct and "PDF 3쪽" in ct and "현행(2026)" in ct and "A 규정 원문" in ct, ct[:80])
+        check("화면: 처리 방식만 작게(기준표 조회), 학생 화면에 비용·응답 시간·실제로 보낸 질문 없음", "처리 방식: 기준표 조회" in h and "비용" not in h and "응답" not in h and "실제로 보낸 질문" not in h and "$0.0012" not in h and "900" not in h)
+        check("화면: 학생 모드에는 개발자·로그 메뉴가 없다", "개발자 · 로그" not in [b.label for b in at.sidebar.button])
+        check("화면: 체크리스트와 안 겹치는 질문에는 안내 줄이 안 붙는다('확인 불가' 배지가 있어도)", "체크리스트에 관련 요건" not in h)
+        at = nav(pick(run(), "배재", 2025, "신입"), "ask")
+        at.text_input(key="q_ask").set_value("혁신교육과미래설계 꼭 들어야 해?")
         [b for b in at.button if b.label == "질문하기"][0].click()
         at.run()
-        check("화면: '확인 불가' 배지 + 겹치는 질문 → '남은 학점 탭 체크리스트에 관련 요건이 있을 수 있어요' (항목: 0학점 이수 필수)",
-              "남은 학점 탭 체크리스트에 관련 요건이 있을 수 있어요" in texts(at.info) and "0학점 이수 필수" in texts(at.info), texts(at.info)[:100])
+        h = html(at)
+        check("화면: 규정 안내 페이지 — '확인 불가' 배지 + 겹치는 질문 → 체크리스트 안내 줄 (항목: 0학점 이수 필수), 근거 카드는 펼쳐서 표시",
+              "남은 학점 계산의 체크리스트에 관련 요건이 있을 수 있어요" in h and "0학점 이수 필수" in h and "근거 (2건)" in h and '<span class="num">[1]</span>' in h, h[:100])
         Fake.badge = False
-        at = pick(run(), "배재", 2025, "신입")
-        at.text_input(key="q_input").set_value("혁신교육과미래설계 꼭 들어야 해?")
+        at = nav(pick(run(), "배재", 2025, "신입"), "ask")
+        at.text_input(key="q_ask").set_value("혁신교육과미래설계 꼭 들어야 해?")
         [b for b in at.button if b.label == "질문하기"][0].click()
         at.run()
-        check("화면: '확인 불가' 배지가 없으면 안내 줄도 없다", "체크리스트에 관련 요건" not in texts(at.info))
+        check("화면: '확인 불가' 배지가 없으면 안내 줄도 없다", "체크리스트에 관련 요건" not in html(at))
         Fake.badge = True
         con = sqlite3.connect(os.environ["SERVICE_LOG_DB"])
         cols = [r[1] for r in con.execute("pragma table_info(query_log)")]
         check("화면: 로그에 질문 기록·열에 학점·평점·입학구분 없음", con.execute("select count(*) from query_log").fetchone()[0] == 3
               and not any(k in c for c in cols for k in ("credit", "gpa", "entry", "학점", "평점")), str(cols))
+        # 개발자 모드: 메뉴·응답 시간·비용·로그 페이지는 ?dev=1에서만
+        at = pick(run(dev=True), "한남", 2023, "신입")
+        check("화면: 개발자 모드(?dev=1)에는 '개발자 · 로그' 메뉴가 있다", "개발자 · 로그" in [b.label for b in at.sidebar.button] and len(at.sidebar.button) == 6)
+        at.text_input(key="q_home").set_value("졸업학점 몇 학점이야?")
+        [b for b in at.button if b.label == "질문하기"][0].click()
+        at.run()
+        h = html(at)
+        check("화면: 개발자 모드 답변 아래에 응답 시간·비용·실제로 보낸 질문 표시", "응답 0.9초" in h and "비용 $0.0012" in h and "실제로 보낸 질문" in h, h[-120:])
+        at = nav(at, "dev")
+        names = [x.label for x in at.metric]
+        check("화면: 개발자 모드 로그 페이지(질문 수·총 비용·평균 응답)", "질문 수" in names and "총 비용($)" in names and "평균 응답(초)" in names and bool(at.dataframe) and not at.exception)
+        at = nav(run(), "home")
+        check("화면: 학생 모드에는 로그 지표가 없다(로그 기록은 계속 남는다)", not at.metric and "질문 수" not in html(at))
         at = pick(run(), "한남", "범위 밖", "신입")
-        check("화면: 범위 밖 학번은 남은 학점·비교 탭에 경고", sum("2022~2026학번만" in w.value for w in at.warning) >= 2)
+        check("화면: 범위 밖 학번은 남은 학점·비교 페이지에 경고, 홈 카드도 안내", html(at).count("2022~2026학번만 다뤄요") >= 2 and
+              all("2022~2026학번만 다뤄요" in html(nav(at, p)) for p in ("remaining", "compare")))
 
         class Boom:
             def answer(self, *a, **k):
@@ -537,7 +633,7 @@ def cmd_app():
         engine.Engine = Boom
         st.cache_resource.clear()
         at2 = run()
-        at2.text_input(key="q_input").set_value("아무 질문")
+        at2.text_input(key="q_home").set_value("아무 질문")
         [b for b in at2.button if b.label == "질문하기"][0].click()
         at2.run()
         errs = con.execute("select error from query_log where error is not null").fetchall()

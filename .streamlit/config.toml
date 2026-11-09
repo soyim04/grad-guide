@@ -1,12 +1,12 @@
-# Streamlit 화면 테마 (src/app.py). 색은 docs/figures 그래프와 같은 파란색 계열이다.
+# Streamlit 화면 테마 (src/app.py, 졸업나침반). 포인트는 연보라 #5B47C7, 보조는 파랑(#2F6FED, CSS에서 사용).
 [theme]
 base = "light"
-primaryColor = "#2563eb"
+primaryColor = "#5B47C7"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f3f6fb"
-textColor = "#1f2937"
-linkColor = "#2563eb"
-borderColor = "#dbe3ef"
+secondaryBackgroundColor = "#F4F1FD"
+textColor = "#1F2340"
+linkColor = "#5B47C7"
+borderColor = "#E3DEF5"
 baseRadius = "large"
 font = "sans-serif"
 
