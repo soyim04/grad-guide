@@ -152,3 +152,4 @@
 
 - Windows, VS Code, Python 가상환경 `.venv`
 - 실행 예: `.venv\Scripts\python.exe src\build_index.py`
+- 패키지 정확한 버전은 `requirements-lock.txt`(Python 3.13.15 `.venv`의 `pip freeze`, ASCII만), 다른 PC 설치 절차는 README `다른 컴퓨터에서 설치`. 패키지를 바꾸면 lock을 다시 만든다
