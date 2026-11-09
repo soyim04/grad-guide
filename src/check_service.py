@@ -505,10 +505,20 @@ def cmd_app():
         at.number_input(key="done|배재|2023|IT경영정보학과|교양").set_value(5)
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(48)
         at.run()
-        check("화면: 영역 입력 후에도 큰 숫자는 5, 영역별 합 49는 '(참고)' 이름으로 접기 안에만", big(at) == "5" and area_sum(at) == "49" and expander(at, "영역별 결과 (참고)") is not None, f"{big(at)} {area_sum(at)}")
+        check("화면: [E15] 배재 편입 영역 입력 후에도 큰 숫자는 5, 영역별 합은 전공을 편입 기준 45로 계산해 31(교양 31 + 전공 0)", big(at) == "5" and area_sum(at) == "31" and expander(at, "영역별 결과 (참고)") is not None, f"{big(at)} {area_sum(at)}")
+        check("화면: [E15] 전공 입력이 기준 45를 넘으면 '전공 기준 45학점 중 0학점 남았어요'(행 BJ-049)", "전공 기준 <b>45학점</b> 중 <b>0학점</b> 남았어요" in html(at) and "BJ-049" in html(at), html(at)[-200:])
         ref = expander(at, "참고")
         rt = texts(ref.markdown) if ref else ""
-        check("화면: '참고' 접기에 표 합계 불일치(34↔36)와 영역 미지정 학점 28을 쉬운 말로", "34학점" in rt and "36학점" in rt and "28학점" in rt and "학생이 할 일은 없어요" in rt, rt[:120])
+        check("화면: [E15] 편입 '참고'에는 편입 전공 기준 안내가 있고, 영역 미지정 학점(28) 안내는 없다(교양 표 불일치 34↔36은 교양 기준이 그대로라 남음)", "편입 전공 기준" in rt and "28학점" not in rt and "전공 세부 항목" not in rt, rt[:120])
+        at_n = pick(run(), "배재", 2023, "신입")
+        nav(at_n, "remaining")
+        at_n.number_input(key="tot|배재|2023|IT경영정보학과").set_value(125)
+        at_n.number_input(key="done|배재|2023|IT경영정보학과|교양").set_value(5)
+        at_n.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(48)
+        at_n.run()
+        ref = expander(at_n, "참고")
+        rt = texts(ref.markdown) if ref else ""
+        check("화면: 신입은 영역별 합 49, '참고' 접기에 표 합계 불일치(34↔36)와 영역 미지정 학점 28을 쉬운 말로", area_sum(at_n) == "49" and "34학점" in rt and "36학점" in rt and "28학점" in rt and "학생이 할 일은 없어요" in rt, rt[:120])
         check("화면: 편입이면 영역별 확인은 참고용 안내", "참고용이에요" in texts(at.caption))
         check("화면: 개설 과목 자리 표시(준비 중)", "이번 학기 개설 과목" in html(at) and "준비 중" in html(at))
         nav(at, "home")
@@ -516,6 +526,38 @@ def cmd_app():
         check("화면: 페이지를 옮겼다 와도 영역 입력(교양 5·전공 48)과 총 이수 학점(125) 유지",
               at.number_input(key="done|배재|2023|IT경영정보학과|교양").value == 5 and at.number_input(key="done|배재|2023|IT경영정보학과|전공").value == 48
               and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125)
+        # E15 회귀: 배재 2023 IT경영정보 편입 · 총 126 → 남은 4 · 전공 기준 45 (3학년 기본), 2학년·4학년·신입
+        at = pick(run(), "배재", 2023, "편입")
+        check("화면: [E15] 배재 편입에만 '편입 학년' 선택(기본 3학년), 한남 편입·배재 신입에는 없음",
+              at.sidebar.radio(key="transfer_grade").value == "3학년" and not [x for x in pick(run(), "한남", 2023, "편입").sidebar.radio if x.key == "transfer_grade"]
+              and not [x for x in pick(run(), "배재", 2023, "신입").sidebar.radio if x.key == "transfer_grade"])
+        nav(at, "remaining")
+        at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(126)
+        at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(40)
+        at.run()
+        h = html(at)
+        check("화면: [E15] 배재 2023 편입 3학년 총 126 → 남은 4, 전공 기준 45 중 5 남음(BJ-049), 인정학점 상한 65(BJ 130·3학년)",
+              big(at) == "4" and "전공 기준 <b>45학점</b> 중 <b>5학점</b> 남았어요" in h and "BJ-049" in h and "최대 65학점" in h, h[-260:])
+        check("화면: [E15] 체크리스트에 편입 요건(면제 안내·인성 이수·학사편입 안내)이 배지로, 채플(2학년 전용)은 3학년에는 없다",
+              "편입 이수 요건" in h and "b-info" in h and "기독교정신과아펜젤러인성" in h and "학사편입" in h and "채플" not in h and "✅" not in h, h[:60])
+        at.sidebar.radio(key="transfer_grade").set_value("2학년")
+        at.run()
+        h = html(at)
+        check("화면: [E15] 2학년 편입: 전공 기준 45·인정학점 상한 33·채플 2회·학번 안내는 '학과 확인'(2년 앞 학번 문구 없음)",
+              "전공 기준 <b>45학점</b>" in h and "최대 33학점" in h and "채플 2회" in h and "2년 앞 학번" not in texts(at.sidebar.info)
+              and "확인하지 못했어요" in texts(at.sidebar.info), texts(at.sidebar.info)[:80])
+        at.sidebar.radio(key="transfer_grade").set_value("4학년")
+        at.run()
+        h = html(at)
+        check("화면: [E15] 4학년 편입: 전공 기준 24·인정학점 상한 98·채플 없음", "전공 기준 <b>24학점</b> 중 <b>0학점</b> 남았어요" in h and "BJ-050" in h
+              and "최대 98학점" in h and "채플" not in h, h[-160:])
+        at = pick(run(), "배재", 2023, "신입")
+        nav(at, "remaining")
+        h = html(at)
+        check("화면: [E15] 신입에게는 편입 요건·인정학점 상한이 안 보인다", "편입 이수 요건" not in h and "최대 65학점" not in h and "전공 기준 <b>" not in h)
+        ids = {r["행ID"] for r in L.CRITERIA}
+        check("기준표: [E15] 배재 편입 행 BJ-049~062 14개, 항목은 모두 '편입_' 접두, 조건에 '이수 필수' 문구 없음(규칙 12 충돌 방지)",
+              all(f"BJ-{i:03d}" in ids for i in range(49, 63)) and all(L.BY_ID[f"BJ-{i:03d}"]["항목"].startswith("편입_") and "이수 필수" not in L.BY_ID[f"BJ-{i:03d}"]["조건"] for i in range(49, 63)))
         # 편입 + 영역만 입력(총 비움) → 큰 숫자 없이 총 입력 요청
         at = pick(run(), "배재", 2024, "편입")
         nav(at, "remaining")

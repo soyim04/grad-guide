@@ -65,6 +65,7 @@ section[data-testid="stSidebar"] [data-testid="stAlert"]{font-size:.9rem;}
 .b-grade{background:var(--soft);color:var(--pt);}
 .b-cur{background:var(--blue-bg);color:var(--blue);}
 .b-old{background:#EEF0F4;color:#59607A;}
+.b-info{background:var(--blue-bg);color:var(--blue);}
 .b-soon{background:var(--soft);color:var(--pt);}
 .callout{border-radius:12px;padding:.75rem 1rem;margin:.5rem 0;font-size:.97rem;line-height:1.6;}
 .callout-warn{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line);}

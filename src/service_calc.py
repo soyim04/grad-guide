@@ -245,7 +245,7 @@ def has_teacher_rows(univ):
     return any(r["대학"] == univ and r["항목"] == "체험교과목_이수" for r in L.CRITERIA)
 
 
-def checklist(univ, year, dept, entry="신입", teacher=False):
+def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=None):
     """학점 외 요건. criteria.csv에 있는 행만 쓴다. 항목: {title, kind(요건|없음|확인불가|해당없음), text, status, src}"""
     items = []
 
@@ -284,6 +284,22 @@ def checklist(univ, year, dept, entry="신입", teacher=False):
             add("체험교과목", "요건", f"체험교과목을 {r['값']}{r['단위']} 이수해야 해요. (조건: {cond})", r)
         else:
             add("체험교과목", "해당없음", f"입학 구분 '{entry}'은 이 요건에서 제외돼요. (조건: {cond})", r)
+    if entry == "편입":  # E15: 편입 요건(항목 `편입_이수요건`, 배재 일반편입). 2학년 편입 전용 행은 2학년을 고른 때만
+        tg = transfer_grade or TRANSFER_DEFAULT_GRADE
+        found = False
+        for r in L.CRITERIA:
+            if r["대학"] != univ or r["항목"] != "편입_이수요건" or r["기준값여부"] != "기준" or not L.in_range(r, year):
+                continue
+            cond = r["조건"]
+            if cond.startswith("2학년") and tg != "2학년":
+                continue
+            found = True
+            text = cond.split(": ", 1)[-1]
+            kind = "안내" if "면제" in text and "예외" not in text else "요건"
+            extra = "학칙·세칙이 아니라 강의시간편람(B등급)에 있는 내용이에요." if r["출처등급"] == "B" else ""
+            add("편입 이수 요건", kind, text + ("." if not text.endswith(".") else ""), r, extra)
+        if found:
+            add("학사편입", "안내", "여기 내용은 일반편입 기준이에요. 학사편입은 규정이 달라 학과에 확인하세요.", None)
     return items
 
 
@@ -370,9 +386,66 @@ TRANSFER_NOTE = {
 TRANSFER_UNKNOWN = "편입생에게 어느 학번 기준이 적용되는지 규정에서 확인하지 못했어요. 학과에 확인하세요."
 
 
-def transfer_note(univ):
-    """입학 구분이 편입일 때 사이드바에 보여 줄 안내: {text, basis[]} (basis는 근거 접기용, 없으면 [])"""
+def transfer_note(univ, grade=None):
+    """입학 구분이 편입일 때 사이드바에 보여 줄 안내: {text, basis[]} (basis는 근거 접기용, 없으면 [])
+    grade: 배재 편입 학년 선택('2학년'·'3학년'·'4학년'). 2·4학년은 몇 년 앞 학번인지 규정 근거가 없어 학과 확인으로 안내한다(E15)."""
+    if univ == "배재" and grade in ("2학년", "4학년"):
+        return {"text": f"{grade} 편입이면 몇 년 앞 학번 기준을 따르는지 규정에서 확인하지 못했어요. 학번은 학과에 확인하고 고르세요.", "basis": []}
     return TRANSFER_NOTE.get(univ) or {"text": TRANSFER_UNKNOWN, "basis": []}
+
+
+# ---------- 배재 일반편입 (E15, 세칙Ⅰ 제64조) ----------
+TRANSFER_GRADES = ["2학년", "3학년", "4학년"]
+TRANSFER_DEFAULT_GRADE = "3학년"
+TRANSFER_MAJOR_NOTE = ("편입 전공 기준(제64조 ⑤)으로 계산했어요. 전적대학에서 인정받은 전공 학점도 포함해서 넣으세요. "
+                       "교양·일반선택은 편입 인정학점이 영역으로 구분되지 않아 참고용이에요.")
+
+
+def uses_transfer_grade(univ):
+    """편입 학년을 고르게 할 대학(편입 전공 행이 있는 대학)"""
+    return any(r["대학"] == univ and r["항목"].startswith("편입_전공_") for r in L.CRITERIA)
+
+
+def transfer_major_row(univ, dept, year, grade):
+    """편입 전공 기준 행(2·3학년 45, 4학년 24). 없으면 None"""
+    item = "편입_전공_4학년" if grade == "4학년" else "편입_전공_2~3학년"
+    rows = [r for r in L.CRITERIA if r["대학"] == univ and r["항목"] == item and r["기준값여부"] == "기준" and L.in_range(r, year) and _rank(r, dept) < 9]
+    rows.sort(key=lambda r: _rank(r, dept))
+    return rows[0] if rows else None
+
+
+def apply_transfer(plan, grade):
+    """영역별 계획의 전공 기준을 편입 행으로 바꾼 사본을 돌려준다(전필·전선 세부 항목과 표 불일치 안내는 편입에 적용되지 않아 뺀다).
+    영역별 계산을 하지 않는 계획(T3·T0)이거나 편입 행이 없으면 원본 그대로."""
+    if plan["tier"] not in ("T1", "T2") or not plan["grad"]:
+        return plan
+    row = transfer_major_row(plan["univ"], plan["dept"], plan["year"], grade)
+    if row is None:
+        return plan
+    lo, hi = _rng(row)
+    new = dict(plan)
+    new["areas"] = [dict(a, row=row, min=lo, max=hi, op=row["비교"], children=[], check=None) if a["name"] == "전공" else dict(a) for a in plan["areas"]]
+    new["unassigned"] = None
+    new["badges"] = []
+    new["notes"] = [TRANSFER_MAJOR_NOTE]
+    new["transfer"] = {"grade": grade, "row": row}
+    return new
+
+
+def transfer_cap_row(univ, grade, grad_value):
+    """전적대학 인정학점 상한 행(졸업학점 열 × 편입 학년). 130·127 칸만 기준표에 있다. 없으면 None"""
+    cond = f"졸업학점 {int(float(grad_value))}"
+    for r in L.CRITERIA:
+        if r["대학"] == univ and r["항목"] == f"편입_인정학점_상한_{grade}" and r["조건"] == cond and r["기준값여부"] == "기준":
+            return r
+    return None
+
+
+def transfer_cap_text(univ, grade, grad_value):
+    r = transfer_cap_row(univ, grade, grad_value)
+    if r is None:
+        return None
+    return f"전적대학에서 인정받을 수 있는 학점은 최대 {r['값']}학점이에요(졸업학점 {int(float(grad_value))}, {grade} 편입, {r['출처조항'].split(' (')[0]})."
 
 
 # ---------- 규정 안내 탭: "확인 불가" 답에 붙이는 체크리스트 안내 ----------

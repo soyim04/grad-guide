@@ -26,7 +26,7 @@ PAGES = [("home", "홈", ":material/home:"), ("ask", "학사 규정 안내", ":m
          ("compare", "학사 선택 비교", ":material/compare_arrows:"), ("courses", "이번 학기 개설 과목 · 준비 중", ":material/menu_book:")]
 DEV_PAGE = ("dev", "개발자 · 로그", ":material/terminal:")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
-KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음")}
+KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음"), "안내": ("info", "안내")}
 DISCLAIMER = "2022~2026학번 기준 · 최종 확인은 학과 사무실에서"
 
 
@@ -120,8 +120,11 @@ def sidebar():
         dept = sb.selectbox("학과·계열 선택", others, key=f"dept_{univ}")
         sb.caption("경영 계열 외 학과는 총 졸업학점까지만 계산해요. 영역별 기준은 기준표에 없어요.")
     entry = sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
+    transfer_grade = None
+    if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
+        transfer_grade = sb.radio("편입 학년 (일반편입)", S.TRANSFER_GRADES, index=S.TRANSFER_GRADES.index(S.TRANSFER_DEFAULT_GRADE), horizontal=True, key="transfer_grade")
     if entry == "편입":
-        note = S.transfer_note(univ)
+        note = S.transfer_note(univ, transfer_grade)
         with transfer_slot:
             st.info(note["text"], icon="🔁")
             if note["basis"]:
@@ -134,7 +137,15 @@ def sidebar():
     sb.divider()
     sb.markdown('<div class="side-note">입력한 학점·평점은 저장하지 않아요.<br>질문 문장은 서비스 개선을 위해 기록돼요.</div>', unsafe_allow_html=True)
     year = year_choice if isinstance(year_choice, int) else (engine.OUT_OF_RANGE if year_choice == engine.OUT_OF_RANGE else None)
-    return {"univ": univ, "year": year, "dept": dept, "entry": entry, "teacher": teacher, "base": base}
+    return {"univ": univ, "year": year, "dept": dept, "entry": entry, "teacher": teacher, "base": base, "transfer_grade": transfer_grade}
+
+
+def plan_for(sc):
+    """영역별 계획. 배재 일반편입이면 전공 기준을 편입 행으로 바꾼다(홈·남은 학점 페이지 공용)"""
+    plan = S.area_plan(sc["univ"], sc["dept"], sc["year"])
+    if sc["entry"] == "편입" and sc.get("transfer_grade"):
+        plan = S.apply_transfer(plan, sc["transfer_grade"])
+    return plan
 
 
 # ---------- 표시 부품 ----------
@@ -154,7 +165,7 @@ def checklist_html(items, limit=None):
 
 
 def show_checklist(sc, limit=None, title=True):
-    items = S.checklist(sc["univ"], sc["year"], sc["dept"], sc["entry"], sc["teacher"])
+    items = S.checklist(sc["univ"], sc["year"], sc["dept"], sc["entry"], sc["teacher"], sc.get("transfer_grade"))
     if title:
         md('<div class="card-h" style="font-size:1rem">학점 외 이수 요건</div>')
     if not items:
@@ -349,7 +360,7 @@ def card_remaining_home(sc):
         md('<div class="card-h">남은 학점 계산</div>')
         if not need_year(sc):
             return
-        plan = S.area_plan(sc["univ"], sc["dept"], sc["year"])
+        plan = plan_for(sc)
         if plan["grad"] is None:
             for n in plan["notes"]:
                 md(U.callout("warn", U.esc(n)))
@@ -368,7 +379,7 @@ def page_remaining(sc):
         return
     univ, year, dept = sc["univ"], sc["year"], sc["dept"]
     transfer = sc["entry"] == "편입"
-    plan = S.area_plan(univ, dept, year)
+    plan = plan_for(sc)
     if plan["grad"] is None:
         for n in plan["notes"]:
             md(U.callout("warn", U.esc(n)))
@@ -385,15 +396,25 @@ def page_remaining(sc):
             st.markdown(f"`{grad['행ID']}` · 이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
         if transfer:
             md(U.callout("info", "편입 인정학점도 총 이수 학점에 포함해 넣어 주세요. 편입 인정학점의 영역 구분은 학과에서 확인하세요."))
+            if sc.get("transfer_grade"):
+                cap = S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"])
+                if cap:
+                    md(U.callout("soft", U.esc(cap)))
         num("지금까지 이수한 총 학점", f"tot|{ctx}", f"tot|{ctx}")
         big_block(sc, stt)
+        if plan.get("transfer") and stt["rem"] is not None:  # 배재 편입: 전공 기준(45·24)으로 남은 학점 한 줄
+            major = next((a for a in stt["rem"]["areas"] if a["name"] == "전공"), None)
+            if major and major["done"] > 0:
+                md(U.callout("concl", f'전공 기준 <b>{major["min"]:g}학점</b> 중 <b>{major["remaining"]:g}학점</b> 남았어요 '
+                                      f'({U.esc(plan["transfer"]["grade"])} 편입, 전적대학 인정 전공 학점 포함). 행 {U.esc(plan["transfer"]["row"]["행ID"])}'))
         if not areas_on:
             md(unsupported_notice(plan))
     with st.container(key="card_rem_check"):
         show_checklist(sc)
     if areas_on:
         with st.expander("영역별 확인 (선택)"):
-            st.caption("참고용이에요. 편입 인정학점이 영역에 안 들어가 실제보다 크게 나올 수 있어요. 편입 인정학점의 영역 구분은 학과에서 확인하세요."
+            st.caption((S.TRANSFER_MAJOR_NOTE if plan.get("transfer") else
+                        "참고용이에요. 편입 인정학점이 영역에 안 들어가 실제보다 크게 나올 수 있어요. 편입 인정학점의 영역 구분은 학과에서 확인하세요.")
                        if transfer else "영역별로 넣으면 영역마다 얼마나 남았는지 볼 수 있어요.")
             cols = st.columns(min(3, len(plan["areas"])))
             for i, a in enumerate(plan["areas"]):
