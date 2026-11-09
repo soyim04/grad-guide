@@ -102,8 +102,8 @@ DERIVED = {"검색청크", "검색거리", "검색근거표시", "llm_call"}  # 
 
 def _tail_noise(o, c):
     """o(기준)·c(이번) 행의 차이가 '마지막 순위 청크 1개 + 거리 차이 작음'뿐이면 True"""
-    if not str(o.get("컬렉션", "")).startswith("base-"):
-        return False
+    if not str(o.get("컬렉션", "")).startswith("base-") or o.get("컬렉션") != c.get("컬렉션"):
+        return False  # RAG가 아니거나 경로가 바뀐 문항은 흔들림이 아니라 진짜 변경이다
     a, b = o["검색청크"].split(";"), c["검색청크"].split(";")
     da, db = [float(x) for x in o["검색거리"].split(";")], [float(x) for x in c["검색거리"].split(";")]
     if len(a) != len(b) or len(a) < 4 or set(a) == set(b):
@@ -222,6 +222,15 @@ def cmd_logic():
     check("회귀 E12-2: 2026학번은 이수학점도 학과 행(CN-071·070)", rows_of("충남대 2026학번 경영학부 학생: 복수전공은 몇 학점 이수해야 해?") == ["CN-070", "CN-071"])
     check("회귀 E12-2: 학과 행이 묶음 어디에도 없으면 여전히 RAG(간호학과 복수전공)", rows_of("충남대 2024학번 간호학과 학생: 복수전공은 몇 학점 이수해야 해?") is None)
     check("회귀 E12-2: 학과를 고르지 않으면 주전공 학점 행이 학과 한정이라 RAG(묶음 불완전)", rows_of("충남대 2024학번 학생: 복수전공은 몇 학점 이수해야 해?") is None)
+    # 1-1b. 회귀 사례(E13, 서비스 시험 중 발견한 조회 항목 빈틈)
+    q, used = engine.choose_question("비교과 몇 시간 들어야 돼?", "한밭", 2024, "융합경영학과")
+    check("회귀 E13-1: 한밭 2024 비교과 질문은 조회로 간다(HB-021 70유닛·HB-022 35유닛)", engine.routable(q) and rows_of(q) == ["HB-021", "HB-022"], f"{q} {rows_of(q)}")
+    check("회귀 E13-1: 목원 2022 비교과는 MW-064(20시간, 편입·재입학 제외)",
+          rows_of("목원대 2022학번 학생: 비교과는 몇 시간 이수해야 해?") == ["MW-064"], str(rows_of("목원대 2022학번 학생: 비교과는 몇 시간 이수해야 해?")))
+    check("회귀 E13-1: 수치 의도 없는 비교과 질문(신청 방법)은 여전히 RAG", rows_of("목원대 2022학번 학생: 비교과 프로그램은 어떻게 신청해?") is None)
+    check("회귀 E13-1: '비교'는 여전히 계산·비교로 RAG(비교과가 아닌 비교 질문)", rows_of("한밭대 2024학번 학생: 졸업학점이랑 평점 중에 비교해 줘") is None)
+    q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
+    check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-2. 동치 점검의 재시도 허용 규칙(B01 흔들림만 허용하고 나머지는 바로 실패)
     def row(chunks, dists, coll="base-x", user="u1", filt='{"대학": "배재"}'):
         return {"컬렉션": coll, "검색청크": ";".join(chunks), "검색거리": ";".join(dists), "검색근거표시": ";".join(chunks), "필터": filt,
@@ -303,9 +312,45 @@ def cmd_logic():
     check("본문 없이 출처 줄만 있으면 통째로 본문", body == "출처: [1] 학칙" and tail == "")
 
 
+def cmd_citations():
+    """답 속 [n]과 카드 번호: 카드에는 모델이 본 원래 번호를 붙이고(다시 매기지 않음), 답 속 [n]은 모두 카드 번호 중에 있어야 한다.
+    eval/results의 실제 답변(개발용 문항, 조회·계산·RAG 경로) 전체와 단위 사례로 본다. API 비용 0."""
+    import csv
+    import re
+    import chromadb
+    row = {"검색청크": "a;b;c;d;e", "인용": "3"}
+    check("카드 번호: 인용 [3]은 3번 청크 c(1부터 다시 매기지 않음)", engine.cited_pairs(row, "답이에요.[3]") == [(3, "c")])
+    check("카드 번호: 인용 목록에 없어도 답에 [2]가 있으면 카드에 포함", engine.cited_pairs(row, "답이에요.[3] 더[2]") == [(2, "b"), (3, "c")])
+    check("카드 번호: 범위 밖 번호([9])는 카드로 만들지 않는다", engine.cited_pairs(row, "[3][9]") == [(3, "c")])
+    check("카드 번호: 조회·계산 경로는 인용이 없으면 넘어온 행 전부", engine.cited_pairs({"검색청크": "x;y", "인용": ""}, "답", True) == [(1, "x"), (2, "y")])
+    check("카드 번호: RAG 경로는 인용이 없으면 카드 없음", engine.cited_pairs({"검색청크": "x;y", "인용": ""}, "답", False) == [])
+    eng = engine.Engine.__new__(engine.Engine)
+    eng.col = chromadb.PersistentClient(path=str(R.CHROMA_DIR)).get_collection(R.COLLECTION)
+    ok_routes = ("criteria-lookup", "criteria-calc", R.COLLECTION)
+    checked = bad_missing = bad_nocard = 0
+    bad = []
+    for f in sorted((ROOT / "eval" / "results").glob("*_dev_base-rag_*.csv")):
+        if "_grade-" in f.name or "_report-" in f.name:
+            continue
+        for r in csv.DictReader(open(f, encoding="utf-8-sig")):
+            if r.get("컬렉션") not in ok_routes or not r.get("검색청크"):
+                continue
+            body, _ = engine.split_answer(r["답변"])
+            retrieved_n = len([i for i in r["검색청크"].split(";") if i])
+            sources, _ = eng._sources_and_badges(r, body)
+            shown = {n for s in sources for n in s["nums"]}
+            cited = {int(n) for n in re.findall(r"\[(\d+)\]", body) if 1 <= int(n) <= retrieved_n}
+            checked += 1
+            if not cited <= shown:
+                bad.append((f.name[-28:], r["id"], sorted(cited - shown)))
+            if any(not s["nums"] for s in sources):
+                bad.append((f.name[-28:], r["id"], "번호 없는 카드"))
+    check(f"답 속 [n]이 모두 카드 번호 중에 있다 (실제 답변 {checked}건: 조회·계산·RAG)", checked > 100 and not bad, f"{len(bad)}건 {bad[:4]}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", nargs="?", default="all", choices=["all", "equiv", "logic", "_snapshot"])  # _snapshot: 재시도용 내부 명령(JSON 한 줄 출력)
+    ap.add_argument("what", nargs="?", default="all", choices=["all", "equiv", "logic", "citations", "_snapshot"])  # _snapshot: 재시도용 내부 명령(JSON 한 줄 출력)
     ap.add_argument("--write-baseline", action="store_true")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
@@ -316,6 +361,8 @@ def main():
         cmd_equiv(a.write_baseline)
     if a.what in ("all", "logic") and not a.write_baseline:
         cmd_logic()
+    if a.what in ("all", "citations") and not a.write_baseline:
+        cmd_citations()
     bad = [n for n, ok, _ in RESULTS if not ok]
     if RESULTS:
         print(f"\n{len(RESULTS) - len(bad)}/{len(RESULTS)} 통과" + (f", 실패 {bad}" if bad else ""))

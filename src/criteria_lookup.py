@@ -22,7 +22,7 @@ ROOT = Path(__file__).resolve().parent.parent
 CRITERIA = list(csv.DictReader((ROOT / "data" / "criteria.csv").open(encoding="utf-8-sig")))
 BY_ID = {r["행ID"]: r for r in CRITERIA}
 
-COMPARE_RE = re.compile(r"비교|중에|이랑 .*(중|더)|더 (많|적)|어느 쪽|심화")
+COMPARE_RE = re.compile(r"비교(?!과)|중에|이랑 .*(중|더)|더 (많|적)|어느 쪽|심화")  # E13: "비교과"의 "비교"는 비교 질문이 아니다
 MENTION_RE = re.compile(r"([가-힣]{2,}(?:학과|학부|대학)|건축학|간호|사범)")
 SCHOOL_WORDS = {u + s for u in ("배재", "충남", "한남", "한밭", "목원") for s in ("대", "대학교")}
 BUNDLE = {
@@ -51,6 +51,8 @@ def items_for(q):
         return BUNDLE["부전공"]
     if "졸업" in q and re.search(r"몇 학점|졸업학점", q) and "말고" not in q and "한 학기" not in q:
         return ["졸업학점"]
+    if "비교과" in q and re.search(r"몇|얼마|시간|유닛|이수", q):  # E13
+        return ["비교과_이수"]
     return None
 
 
