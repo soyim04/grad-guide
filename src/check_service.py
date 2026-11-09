@@ -17,6 +17,7 @@ import builtins
 import hashlib
 import json
 import random
+import re
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -322,7 +323,7 @@ def cmd_logic():
         return {(i["title"], i["kind"]): i for i in S.checklist(u, y, dept or S.BASE_DEPT[u], entry, teacher)}
     check("배재 2025~: 0학점 이수 필수(BJ-032) 표시, 2024는 없음", ("0학점 이수 필수", "요건") in kinds("배재", 2025) and ("0학점 이수 필수", "요건") not in kinds("배재", 2024))
     check("배재 졸업 평점은 확인 불가", ("졸업 평점", "확인불가") in kinds("배재", 2024))
-    check("목원 졸업 평점은 '없음'(조문 인용)", ("졸업 평점", "없음") in kinds("목원", 2024) and "제47조" in kinds("목원", 2024)[("졸업 평점", "없음")]["text"])
+    check("목원 졸업 평점은 '없음'(본문은 쉬운 말, 조문은 출처 줄에)", ("졸업 평점", "없음") in kinds("목원", 2024) and "제47조" not in kinds("목원", 2024)[("졸업 평점", "없음")]["text"] and "제47조" in kinds("목원", 2024)[("졸업 평점", "없음")]["src"]["source"])
     k = kinds("목원", 2024)
     check("목원 신입: 비교과 20시간, 체험교과목 일반학과 없음", ("비교과", "요건") in k and "20시간" in k[("비교과", "요건")]["text"] and ("체험교과목", "없음") in k)
     check("목원 편입: 비교과는 제외 대상", ("비교과", "해당없음") in kinds("목원", 2024, "편입"))
@@ -360,6 +361,24 @@ def cmd_logic():
     check("본문 없이 출처 줄만 있으면 통째로 본문", body == "출처: [1] 학칙" and tail == "")
 
 
+    # 1-9b. 체크리스트 본문에는 조항·개정 이력·부칙이 없다(5개 대학 × 2022~2026학번 × 입학 구분 3 × 사범대 여부, 기본 학과 기준)
+    ref_re = re.compile(r"제\s*\d+\s*조|개정|신설|부칙|시행세칙|\d{4}\.\s?\d")
+    bad_ck, n_ck = [], 0
+    for u_ in S.BASE_DEPT:
+        for y_ in range(2022, 2027):
+            for en_ in S.ENTRY_TYPES:
+                for tc_ in ((False, True) if S.has_teacher_rows(u_) else (False,)):
+                    for it_ in S.checklist(u_, y_, S.BASE_DEPT[u_], en_, tc_):
+                        n_ck += 1
+                        if ref_re.search(it_["title"] + it_["text"]):
+                            bad_ck.append((u_, y_, en_, it_["title"], it_["text"][:40]))
+    check(f"체크리스트 본문: 조항·개정·부칙이 남는 항목 0개(항목 {n_ck}개 점검)", not bad_ck and n_ck > 100, str(bad_ck[:3]))
+    t_, rm_ = S.plain_text("일반학과는 이 요건이 없어요(학칙 시행세칙 제27조 ④ (개정 2025.3.29.); 부칙(세칙 제24109호, 2025.3.29.) 제2조 체험교과목 이수에 관한 적용례).")
+    check("체크리스트 본문 정리 규칙: 중첩 괄호의 조항·개정·부칙은 본문에서 빠지고 뺀 문구로 돌려준다, 조건 괄호는 그대로", t_ == "일반학과는 이 요건이 없어요." and any("제27조" in x for x in rm_) and any("부칙" in x for x in rm_)
+          and S.plain_text("비교과를 20시간 이수해야 해요. (조건: 편입학자 제외)") == ("비교과를 20시간 이수해야 해요. (조건: 편입학자 제외)", []))
+    mw = {it_["title"]: it_ for it_ in S.checklist("목원", 2023, "경영학부", "신입", False)}
+    check("체크리스트: 목원 졸업 평점·체험교과목은 쉬운 한 문장, 조항은 출처 줄(src)에 그대로", mw["졸업 평점"]["text"] == "졸업 평점 기준은 없어요. 학과에 한 번 확인하세요." and mw["체험교과목"]["text"] == "일반학과는 체험교과목 요건이 없어요."
+          and "제47조" in mw["졸업 평점"]["src"]["source"] and "제27조" in mw["체험교과목"]["src"]["source"])
     # 1-9. 배재 개설 과목(가공본이 있을 때만): 파일 659분반, 영역 분류, 공유혁신 분리, 요일 파싱, 제한 배지
     if not CR.available():
         skip("개설 과목 로직 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")

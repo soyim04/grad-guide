@@ -245,16 +245,34 @@ def has_teacher_rows(univ):
     return any(r["대학"] == univ and r["항목"] == "체험교과목_이수" for r in L.CRITERIA)
 
 
+_REF_PAREN = re.compile(r"\s*[\(（][^()（）]*(?:제\s*\d+\s*조|개정|신설|부칙|\d{4}\.\s?\d)[^()（）]*[\)）]")
+
+
+def plain_text(text):
+    """체크리스트 본문은 쉬운 말 한 문장만: 조항·개정 이력·부칙이 든 괄호를 뺀다(바깥 괄호 안에 괄호가 든 경우까지 되풀이). 반환: (본문, 뺀 문구들)
+    뺀 문구는 `근거 보기`로 보내고, 조항명은 출처 줄이 한 번 보여 준다."""
+    removed = []
+    while True:
+        m = _REF_PAREN.search(text)
+        if not m:
+            break
+        removed.append(m.group(0).strip())
+        text = text[:m.start()] + text[m.end():]
+    return text.strip(), removed
+
+
 def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=None):
-    """학점 외 요건. criteria.csv에 있는 행만 쓴다. 항목: {title, kind(요건|없음|확인불가|해당없음), text, status, src}"""
+    """학점 외 요건. criteria.csv에 있는 행만 쓴다. 항목: {title, kind(요건|없음|확인불가|해당없음), text, status, src}
+    본문(text)에는 조항·개정 이력·부칙을 넣지 않는다(출처 줄과 근거 보기가 보여 준다). add()가 일반 규칙으로 한 번 더 걸러 낸다."""
     items = []
 
     def add(title, kind, text, r, extra=""):
-        items.append({"title": title, "kind": kind, "text": text, "status": r["상태"] if r else "", "src": source_of(r) if r else None, "extra": extra})
+        text, removed = plain_text(text)
+        items.append({"title": title, "kind": kind, "text": text, "status": r["상태"] if r else "", "src": source_of(r) if r else None, "extra": " ".join(x for x in [extra] + removed if x)})
 
     for r in _pick_rows(univ, dept, year, "평점_최저"):
         if r["상태"] == "없음":
-            add("졸업 평점", "없음", f"{r['출처조항']}의 졸업요건에 평점 조건이 없다고 되어 있어요. (상관없다는 뜻은 아니니 학과에 확인하세요)", r)
+            add("졸업 평점", "없음", "졸업 평점 기준은 없어요. 학과에 한 번 확인하세요.", r)
         elif r["상태"] == "확인불가" or not r["값"]:
             add("졸업 평점", "확인불가", "졸업 최저 평점을 규정에서 확인하지 못했어요(확인 불가).", r)
         else:
@@ -263,7 +281,7 @@ def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=No
     for r in _pick_rows(univ, dept, year, "비교과_이수"):
         cond = r["조건"]
         if r["상태"] == "없음":
-            add("비교과", "없음", f"{r['대상']}은 비교과 이수 요건이 없다고 되어 있어요({r['출처조항']}).", r)
+            add("비교과", "없음", f"{r['대상']}은 비교과 이수 요건이 없어요.", r)
         elif _entry_applies(cond, entry):
             if r["행ID"] not in seen:
                 seen.add(r["행ID"])
@@ -279,7 +297,7 @@ def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=No
         if not _teacher_applies(cond, teacher):
             continue
         if r["상태"] == "없음":
-            add("체험교과목", "없음", f"일반학과는 이 요건이 없어요({r['출처조항']}).", r)
+            add("체험교과목", "없음", "일반학과는 체험교과목 요건이 없어요.", r)
         elif _entry_applies(cond, entry):
             add("체험교과목", "요건", f"체험교과목을 {r['값']}{r['단위']} 이수해야 해요. (조건: {cond})", r)
         else:
