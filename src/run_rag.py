@@ -33,10 +33,7 @@ import openai
 from dotenv import load_dotenv
 from openai import OpenAI
 
-import criteria_calc
 import criteria_lookup
-import query_expand
-import query_filter
 
 ROOT = Path(__file__).resolve().parent.parent
 DEV_CSV = ROOT / "eval" / "questions_dev.csv"  # 개발용 51문항만. 홀드아웃은 열지 않는다
@@ -317,8 +314,7 @@ def cmd_answer(args):
     sha = file_sha256(chunks_path)
     if chunks_path == CHUNKS and sha != CHUNKS_SHA256:
         sys.exit(f"chunks.jsonl sha256이 기록과 다릅니다 ({sha}). 색인이 낡았을 수 있어 중단합니다.")
-    system, version = (ANSWER_SYSTEM_V2, PROMPT_VERSION_V2) if args.prompt == "v2" else (ANSWER_SYSTEM, PROMPT_VERSION)
-    lsys, lver = (LOOKUP_SYSTEM_V2, LOOKUP_VERSION_V2) if args.lookup_prompt == "v2" else (LOOKUP_SYSTEM, LOOKUP_VERSION)
+    import pipeline  # 질문 하나 처리(계산 → 조회 → RAG)는 pipeline.py가 하고 서비스와 같이 쓴다. 순환 import를 피하려고 여기서 불러온다
     rows = load_csv(DEV_CSV)
     if args.ids:
         want = args.ids.split(",")
@@ -332,87 +328,24 @@ def cmd_answer(args):
     col = chromadb.PersistentClient(path=str(CHROMA_DIR)).get_collection(collection)
     print(f"컬렉션 {collection}: {col.count()}개, 질문 {len(rows)}개, k={K}")
 
-    search_q = [query_expand.expand(r["질문"]) if args.expand else r["질문"] for r in rows]  # 실험 3: 검색용 임베딩만 확장, 답변 모델은 원래 질문
+    chat = Chat(client)
+    pl = pipeline.Pipeline(client, col, chat, pipeline.Settings(
+        filter=args.filter, expand=args.expand, lookup=args.lookup, calc=args.calc, prompt=args.prompt,
+        lookup_prompt=args.lookup_prompt, collection=collection, chunks_sha=sha))
+    version = pl.version
+    search_q = [pl.search_query(r["질문"]) for r in rows]  # 실험 3: 검색용 임베딩만 확장, 답변 모델은 원래 질문
     emb = client.embeddings.create(model=EMBED_MODEL, input=search_q)
     q_vecs = [d.embedding for d in sorted(emb.data, key=lambda d: d.index)]
     emb_tokens = emb.usage.total_tokens
 
-    chat = Chat(client)
     out, tin_sum, tout_sum = [], 0, 0
     for r, vec, sq in zip(rows, q_vecs, search_q):
-        if args.calc:
-            cres, cwhy = criteria_calc.calc(r["질문"])
-            if cres is not None:  # 실험 11: 계산·비교 질문은 코드가 계산, LLM은 설명만
-                calc_text, rows_text, row_ids = criteria_calc.build_context(cres)
-                user_msg = "[계산 결과]" + chr(10) + calc_text + chr(10) + chr(10) + "[기준표 조회 결과]" + chr(10) + rows_text + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"]
-                ans, tin, tout = chat.json(MODEL, CALC_SYSTEM, user_msg, ANSWER_SCHEMA, "answer")
-                tin_sum += tin
-                tout_sum += tout
-                cited = [n for n in ans["인용"] if 1 <= n <= len(row_ids)]
-                out.append({
-                    "id": r["id"], "질문": r["질문"], "답변": ans["답변"],
-                    "인용": ";".join(map(str, cited)), "인용청크": ";".join(row_ids[n - 1] for n in cited),
-                    "검색청크": ";".join(row_ids), "검색거리": "",
-                    "검색근거표시": " | ".join(f"{criteria_lookup.BY_ID[i]['대학']} 기준표 {criteria_lookup.BY_ID[i]['항목']} {criteria_lookup.BY_ID[i]['대상']}" for i in row_ids),
-                    "적중후보": "", "혼입_대학": "0/0", "혼입_학번": "0/0", "혼입_합계": "0/0",
-                    "필터": "", "검색질문": "(criteria 계산)", "계산결과": calc_text.replace(chr(10), " / "),
-                    "모델": MODEL, "프롬프트버전": CALC_VERSION, "프롬프트해시": prompt_hash(CALC_SYSTEM),
-                    "k": "", "컬렉션": "criteria-calc", "chunks_sha256": file_sha256(ROOT / "data" / "criteria.csv"),
-                    "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
-                    "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
-                })
-                print(f"  {r['id']} 계산({cres['kind']}) 행 {row_ids} 값 {cres['values']} 인용 {cited}", flush=True)
-                continue
-            print(f"  {r['id']} 계산 안 함({cwhy})", flush=True)
-        if args.lookup:
-            result, why = criteria_lookup.lookup(r["질문"])
-            if result is not None:  # 실험 8: 숫자 질문은 기준표 조회, LLM은 설명만
-                context, row_ids = criteria_lookup.build_context(result)
-                ans, tin, tout = chat.json(MODEL, lsys, "[기준표 조회 결과]" + chr(10) + context + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"], ANSWER_SCHEMA, "answer")
-                tin_sum += tin
-                tout_sum += tout
-                cited = [n for n in ans["인용"] if 1 <= n <= len(row_ids)]
-                out.append({
-                    "id": r["id"], "질문": r["질문"], "답변": ans["답변"],
-                    "인용": ";".join(map(str, cited)), "인용청크": ";".join(row_ids[n - 1] for n in cited),
-                    "검색청크": ";".join(row_ids), "검색거리": "",
-                    "검색근거표시": " | ".join(f"{criteria_lookup.BY_ID[i]['대학']} 기준표 {criteria_lookup.BY_ID[i]['항목']} {criteria_lookup.BY_ID[i]['대상']}" for i in row_ids),
-                    "적중후보": "", "혼입_대학": "0/0", "혼입_학번": "0/0", "혼입_합계": "0/0",
-                    "필터": "", "검색질문": "(criteria 조회)",
-                    "모델": MODEL, "프롬프트버전": lver, "프롬프트해시": prompt_hash(lsys),
-                    "k": "", "컬렉션": "criteria-lookup", "chunks_sha256": file_sha256(ROOT / "data" / "criteria.csv"),
-                    "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
-                    "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
-                })
-                print(f"  {r['id']} 조회 행 {row_ids} 인용 {cited}", flush=True)
-                continue
-            print(f"  {r['id']} RAG 폴백({why})", flush=True)
-        where = query_filter.where_for(r["질문"]) if args.filter else None
-        hit = col.query(query_embeddings=[vec], n_results=K, where=where, include=["documents", "metadatas", "distances"])
-        ids, docs, metas, dists = hit["ids"][0], hit["documents"][0], hit["metadatas"][0], hit["distances"][0]
-        context = "\n\n".join(f"{chunk_header(i, m)}\n{d}" for i, (m, d) in enumerate(zip(metas, docs), 1))
-        user = f"[근거]\n{context}\n\n[질문]\n{r['질문']}"
-        ans, tin, tout = chat.json(MODEL, system, user, ANSWER_SCHEMA, "answer")
-        tin_sum += tin
-        tout_sum += tout
-        cited = [n for n in ans["인용"] if 1 <= n <= len(ids)]
-        mix = mixed_flags(r, metas)
-        out.append({
-            "id": r["id"], "질문": r["질문"], "답변": ans["답변"],
-            "인용": ";".join(map(str, cited)), "인용청크": ";".join(ids[n - 1] for n in cited),
-            "검색청크": ";".join(ids), "검색거리": ";".join(f"{d:.3f}" for d in dists),
-            "검색근거표시": " | ".join(f"{m['대학']} {m['규정명']} {m['조항'][:30]}" for m in metas),
-            "적중후보": ";".join("Y" if hit_candidate(r["근거"], m) else "N" for m in metas),
-            "혼입_대학": f"{mix['대학혼입']}/{mix['대학대상']}", "혼입_학번": f"{mix['학번혼입']}/{mix['학번대상']}",
-            "혼입_합계": f"{mix['합계혼입']}/{mix['합계대상']}",
-            "필터": json.dumps(where, ensure_ascii=False) if args.filter else "",
-            "검색질문": sq if args.expand else "",
-            "모델": MODEL, "프롬프트버전": version, "프롬프트해시": prompt_hash(system),
-            "k": K, "컬렉션": collection, "chunks_sha256": sha,
-            "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
-            "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
-        })
-        print(f"  {r['id']} 인용 {cited} 혼입 {mix['합계혼입']}/{mix['합계대상']}", flush=True)
+        res = pl.answer_one(r, sq, vec)
+        out.append(res.row)
+        tin_sum += res.row["입력토큰"]
+        tout_sum += res.row["출력토큰"]
+        for note in res.notes:
+            print(note, flush=True)
 
     base = result_base(bool(args.limit), args.tag)
     RESULTS.mkdir(parents=True, exist_ok=True)
