@@ -38,7 +38,10 @@ def norm(s):
 
 
 def items_for(q):
-    if re.search(r"한 학기.*(최대|몇 학점)|수강.*(할 수|신청)", q):
+    # E12: 재수강·재이수의 "수강"은 수강상한 의도가 아니라 이 두 낱말을 지우고 본다.
+    # "수강…할 수/신청"은 학점·상한 단서가 같이 있을 때만 수강상한이다(수강신청 일정 같은 질문은 RAG).
+    q2 = re.sub(r"재수강|재이수", "", q)
+    if re.search(r"한 학기.*(최대|몇 학점)", q2) or (re.search(r"수강.*(할 수|신청)", q2) and re.search(r"학점|최대|상한|한도|제한", q2)):
         return ["수강상한_학기"]
     if "평점" in q and re.search(r"몇 점|이상|\d\.\d", q):
         return ["평점_최저"]
@@ -73,7 +76,7 @@ def lookup(question):
     mentions = [m for m in MENTION_RE.findall(question) if m not in SCHOOL_WORDS and m != "일반학과"]
     out = {}
     for year in years or [None]:
-        rows = []
+        rows, any_spec = [], False
         for item in items:
             cand = [r for r in CRITERIA if r["대학"] == univ[0] and r["항목"] == item and r["기준값여부"] == "기준"]
             if year:
@@ -82,14 +85,18 @@ def lookup(question):
                 cand = [r for r in cand if "교직" not in r["이수유형"]]
             spec = [r for r in cand if r["대상"] != "전체" and any(norm(t) and norm(t) in norm(question) for t in r["대상"].split())]
             if spec:
-                cand = spec
-            elif mentions:
-                return None, f"질문의 {mentions}에 맞는 대상 행 없음"
+                cand, any_spec = spec, True
             else:
                 cand = [r for r in cand if r["대상"] == "전체"]
+                if mentions and not cand:
+                    return None, f"질문의 {mentions}에 맞는 대상 행 없음"
             if not cand:
                 return None, f"{item} 행 없음(묶음 불완전)"
             rows += cand
+        # 학과를 지목했는데 묶음 어디에서도 그 학과 행을 못 찾았으면 RAG로 보낸다(E8).
+        # 한 항목이라도 찾았으면 나머지 항목은 전체 행을 쓴다(E12: 충남 경영학부 복수전공은 주전공 학점만 학과 행, 이수학점은 2026학번부터 학과 행).
+        if mentions and not any_spec:
+            return None, f"질문의 {mentions}에 맞는 대상 행 없음"
         out[year] = rows
     return out, ""
 

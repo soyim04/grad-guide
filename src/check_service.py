@@ -203,6 +203,25 @@ def cmd_logic():
     check("학과를 붙여야 열리는 질문(목원 경영학부 졸업학점)은 학과를 붙인 문장을 쓴다", used1 and engine.routable(q1), q1)
     q2, used2 = engine.choose_question("부전공은 몇 학점이야?", "한남", 2023, "경영정보학과")
     check("학과를 붙이면 막히는 질문(한남 부전공)은 학과 없는 문장을 쓴다", (not used2) and engine.routable(q2) and "경영정보학과" not in q2, q2)
+    # 1-1. 회귀 사례(E12, 서비스 시험 중 발견한 조회 규칙 버그. 평가셋에는 넣지 않았다)
+    def rows_of(q):
+        res = L.lookup(q)[0]
+        return None if res is None else sorted({r["행ID"] for rs in res.values() for r in rs})
+    q, used = engine.choose_question("재수강은 어떤 조건에서 할 수 있어?", "충남", 2024, "경영학부")
+    check("회귀 E12-1: 충남 2024 재수강 질문은 수강상한 조회로 가지 않고 RAG로 간다", rows_of(q) is None and not engine.routable(q), q)
+    check("회귀 E12-1: 재이수도 마찬가지", rows_of("충남대 2024학번 학생: 재이수는 몇 번 할 수 있어?") is None)
+    check("회귀 E12-1: 수강상한 질문은 그대로 조회(한 학기 최대 몇 학점 → CN-077·078)",
+          rows_of("충남대 2024학번 학생: 한 학기에 최대 몇 학점 들을 수 있어?") == ["CN-077", "CN-078"])
+    q, used = engine.choose_question("수강신청은 언제부터 할 수 있어?", "충남", 2024, "경영학부")
+    check("회귀 E12-3: 충남 2024 수강신청 일정 질문은 수강상한 조회로 가지 않고 RAG로 간다(학점·상한 단서 없음)", rows_of(q) is None and not engine.routable(q), q)
+    check("회귀 E12-3: 학점 단서가 있으면 수강신청도 수강상한 조회(한 학기에 몇 학점 수강신청할 수 있어 → CN-077·078)",
+          rows_of("충남대 2024학번 학생: 한 학기에 몇 학점 수강신청할 수 있어?") == ["CN-077", "CN-078"])
+    q, used = engine.choose_question("복수전공은 몇 학점 이수해야 해?", "충남", 2024, "경영학부")
+    check("회귀 E12-2: 충남 2024 경영학부 복수전공은 조회로 간다(주전공 학점 CN-070 학과 행 + 이수학점 CN-067 전체 행)",
+          used and rows_of(q) == ["CN-067", "CN-070"], f"{used} {rows_of(q)}")
+    check("회귀 E12-2: 2026학번은 이수학점도 학과 행(CN-071·070)", rows_of("충남대 2026학번 경영학부 학생: 복수전공은 몇 학점 이수해야 해?") == ["CN-070", "CN-071"])
+    check("회귀 E12-2: 학과 행이 묶음 어디에도 없으면 여전히 RAG(간호학과 복수전공)", rows_of("충남대 2024학번 간호학과 학생: 복수전공은 몇 학점 이수해야 해?") is None)
+    check("회귀 E12-2: 학과를 고르지 않으면 주전공 학점 행이 학과 한정이라 RAG(묶음 불완전)", rows_of("충남대 2024학번 학생: 복수전공은 몇 학점 이수해야 해?") is None)
     # 1-2. 동치 점검의 재시도 허용 규칙(B01 흔들림만 허용하고 나머지는 바로 실패)
     def row(chunks, dists, coll="base-x", user="u1", filt='{"대학": "배재"}'):
         return {"컬렉션": coll, "검색청크": ";".join(chunks), "검색거리": ";".join(dists), "검색근거표시": ";".join(chunks), "필터": filt,
