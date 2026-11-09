@@ -154,10 +154,10 @@ def sidebar():
     entry = sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
     transfer_grade = None
     if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
-        transfer_grade = S.TRANSFER_DEFAULT_GRADE  # 편입 학년 선택은 두지 않고 3학년 기준으로 고정(일반편입은 대부분 3학년)
-    if entry == "편입":  # 편입 안내는 입학 구분(과 편입 학년) 바로 아래에 둔다
-        note = S.transfer_note(univ, transfer_grade)
-        sb.info(note["text"] + (f" {S.TRANSFER_GRADE_LINE}" if transfer_grade else ""), icon="🔁")
+        transfer_grade = S.TRANSFER_DEFAULT_GRADE  # 편입 학년 선택은 두지 않고 3학년 기준으로 고정(우리 선택. 시행세칙Ⅰ 제63조 ②는 3·4학년 편입 허가)
+    if entry == "편입":  # 다섯 학교 모두 입학 구분 바로 아래 한 줄, 세부는 근거 보기 안(배재·한남만)
+        note = S.transfer_note(univ)
+        sb.info(note["text"], icon="🔁")
         if note["basis"]:
             with sb.expander("근거 보기"):
                 for line in note["basis"]:

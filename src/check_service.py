@@ -243,11 +243,13 @@ def cmd_logic():
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙
-    for u, arts in (("배재", ("제17조 ⑦", "제64조 ④")), ("한남", ("제12조", "제20조의2"))):
+    for u, arts in (("배재", ("제17조 ⑦", "제63조 ②", "제64조 ④")), ("한남", ("제12조", "제20조의2"))):
         n = S.transfer_note(u)
-        check(f"편입 안내 {u}: 2년 앞 학번·3학년 편입 기준·예시·근거 조문 명시", "2년 앞 학번" in n["text"] and "3학년 편입 기준" in n["text"] and "2023학번" in n["text"]
-              and all(any(a in b for b in n["basis"]) for a in arts) and any("해석" in b for b in n["basis"]), str(n)[:120])
-    check("편입 안내 한밭·충남·목원: 확인하지 못했어요 + 근거 없음", all("확인하지 못했어요" in S.transfer_note(u)["text"] and not S.transfer_note(u)["basis"] for u in ("한밭", "충남", "목원")))
+        check(f"편입 안내 {u}: 한 줄(2년 앞 학번·2023학번 예시), 근거 접기에 3학년 편입 기준·조문·해석 명시, '4학년 24학점' 문구 없음",
+              n["text"] == "편입생은 2년 앞 학번을 고르세요. (예: 2025년 편입 → 2023학번)" and any("3학년 편입 기준이에요. 그 외 학년은 학과에 확인하세요." == b for b in n["basis"])
+              and all(any(a in b for b in n["basis"]) for a in arts) and any("해석" in b for b in n["basis"]) and "24학점" not in n["text"] + "".join(n["basis"]), str(n)[:120])
+    check("편입 안내 한밭·충남·목원: 한 줄 '적용 학번을 학과에서 확인하세요' + 근거 없음",
+          all(S.transfer_note(u) == {"text": S.TRANSFER_CHECK_LINE, "basis": []} for u in ("한밭", "충남", "목원")))
     for u, y, d, q, want in (("배재", 2025, "IT경영정보학과", "혁신교육과미래설계 꼭 들어야 해?", ["0학점 이수 필수"]),
                              ("목원", 2024, "경영학부", "체험교과목 이수해야 해?", ["체험교과목"]),
                              ("충남", 2024, "경영학부", "졸업 평점은 몇 점이야?", ["졸업 평점"]),
@@ -494,7 +496,7 @@ def cmd_app():
         # 홈 = 남은 학점 페이지: 배재 2023 · 편입 · 총 125 → 5
         at = pick(run(), "배재", 2023, "편입")
         side = texts(at.sidebar.info)
-        check("화면: 배재 편입이면 학번 아래에 안내(2년 앞 학번·3학년 편입 기준·2023학번 예시)", "2년 앞 학번" in side and "3학년 편입 기준" in side and "2023학번" in side, side[:80])
+        check("화면: 배재 편입이면 학번 아래에 한 줄 안내(2년 앞 학번·2023학번 예시)", side == "편입생은 2년 앞 학번을 고르세요. (예: 2025년 편입 → 2023학번)", side[:80])
         e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
         check("화면: 배재 편입 안내의 근거 접기(제17조 ⑦·제64조 ④·해석 명시)", len(e) == 1 and "제17조 ⑦" in texts(e[0].markdown) and "제64조 ④" in texts(e[0].markdown) and "해석" in texts(e[0].markdown))
         check("화면: 총 이수 학점을 넣기 전에는 큰 숫자 없음(시안 값 하드코딩 없음)", big(at) is None and "총 이수 학점을 입력하면" in html(at))
@@ -541,11 +543,10 @@ def cmd_app():
               and at.number_input(key="tot|배재|2023|IT경영정보학과").value == 125)
         # E15 회귀: 배재 2023 IT경영정보 편입 · 총 126 → 남은 4 · 전공 기준 45. 편입 학년 선택 칸은 없고 3학년 고정(E17b)
         at = pick(run(), "배재", 2023, "편입")
-        check("화면: [E17b] 편입 학년 선택 칸이 없다(배재 편입·한남 편입·배재 신입 모두), 배재 편입 안내에 3학년 기준 고정 문구",
+        check("화면: [E17b] 편입 학년 선택 칸이 없다(배재 편입·한남 편입·배재 신입 모두), 편입 안내에 24학점 문구 없음",
               not [x for x in at.sidebar.radio if x.key == "transfer_grade"] and not [x for x in pick(run(), "한남", 2023, "편입").sidebar.radio if x.key == "transfer_grade"]
               and not [x for x in pick(run(), "배재", 2023, "신입").sidebar.radio if x.key == "transfer_grade"]
-              and S.TRANSFER_GRADE_LINE in texts(at.sidebar.info) and "4학년 편입 전공 24학점" in texts(at.sidebar.info)
-              and S.TRANSFER_GRADE_LINE not in texts(pick(run(), "한남", 2023, "편입").sidebar.info), texts(at.sidebar.info)[-90:])
+              and "24학점" not in texts(at.sidebar.info), texts(at.sidebar.info)[-90:])
         nav(at, "remaining")
         at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(126)
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(40)
@@ -582,10 +583,17 @@ def cmd_app():
         at.run()
         check("화면: 총 이수 학점을 넣으면 그 값이 우선(130−120=10)", big(at) == "10")
         # 사이드바 편입 안내: 학교별, 신입이면 없음
-        for u, want, has_basis in (("한남", "2년 앞 학번", True), ("한밭", "확인하지 못했어요", False), ("충남", "확인하지 못했어요", False), ("목원", "확인하지 못했어요", False)):
+        at = pick(run(), "한남", 2023, "편입")
+        check("화면: 한남 편입 안내('2년 앞 학번')·근거 접기 있음", "2년 앞 학번" in texts(at.sidebar.info) and len([x for x in at.sidebar.expander if x.label == "근거 보기"]) == 1, texts(at.sidebar.info)[:60])
+        for u in ("한밭", "충남", "목원"):  # 사이드바 한 줄만, 근거 접기 없음, 남은 학점·홈 화면에는 중복 줄 없음
             at = pick(run(), u, 2023, "편입")
-            e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
-            check(f"화면: {u} 편입 안내('{want}')·근거 접기 {'있음' if has_basis else '없음'}", want in texts(at.sidebar.info) and bool(e) == has_basis, texts(at.sidebar.info)[:60])
+            side = texts(at.sidebar.info)
+            nav(at, "remaining")
+            h_rem = html(at)
+            nav(at, "home")
+            h_home = html(at)
+            check(f"화면: {u} 편입은 사이드바에 '{S.TRANSFER_CHECK_LINE}' 한 줄(근거 접기 없음), 남은 학점·홈 화면에는 같은 줄이 없다",
+                  side == S.TRANSFER_CHECK_LINE and not [x for x in at.sidebar.expander if x.label == "근거 보기"] and S.TRANSFER_CHECK_LINE not in h_rem and S.TRANSFER_CHECK_LINE not in h_home, side[:60])
         check("화면: 신입이면 사이드바 편입 안내 없음", not pick(run(), "배재", 2023, "신입").sidebar.info)
         # 미지원 안내: 한밭·한남(T3), 경영 계열 외 학과 / 지원: 배재·충남
         for u in ("한밭", "한남"):
