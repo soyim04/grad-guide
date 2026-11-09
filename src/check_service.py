@@ -4,7 +4,9 @@
     python src/check_service.py equiv      # 파이프라인 동치: 개발용 51문항의 경로·검색 청크/조회 행 ID·검색 거리·필터·확장 질문·LLM에 보낸 프롬프트 해시·진행 로그가
                                            #   기준 스냅샷(eval/pipeline_snapshot.json)과 같은가
     python src/check_service.py equiv --write-baseline   # 의도한 변경 뒤 기준 스냅샷을 다시 쓴다(추출 전 코드의 스냅샷으로 처음 만들었다)
-    python src/check_service.py logic      # 사이드바 우선 규칙, 영역별 계획(T1·T2·T3), 체크리스트, 학사 선택 비교, 출처 줄 분리
+    python src/check_service.py logic      # 사이드바 우선 규칙, 영역별 계획(T1·T2·T3), 체크리스트, 학사 선택 비교, 출처 줄 분리, 편입 안내·체크리스트 안내 규칙
+    python src/check_service.py citations  # 답 속 [n]이 모두 카드 번호 중에 있는지(실제 답변 전체)
+    python src/check_service.py app        # 화면 스모크(streamlit AppTest, 가짜 엔진, 임시 로그 DB)
 
 equiv는 OpenAI 임베딩을 질문 해시로 만든 고정 벡터로, LLM을 프롬프트 해시만 기록하는 가짜로 바꿔 run_rag.cmd_answer를 그대로 실행한다
 (임베딩 API 잡음이 없고 비용이 0이다). 답변 문장·토큰·실행 시각은 비교하지 않는다. 결과 CSV·사용 로그는 쓰지 않는다.
@@ -231,6 +233,34 @@ def cmd_logic():
     check("회귀 E13-1: '비교'는 여전히 계산·비교로 RAG(비교과가 아닌 비교 질문)", rows_of("한밭대 2024학번 학생: 졸업학점이랑 평점 중에 비교해 줘") is None)
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
+    # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙
+    for u, arts in (("배재", ("제17조 ⑦", "제64조 ④")), ("한남", ("제12조", "제20조의2"))):
+        n = S.transfer_note(u)
+        check(f"편입 안내 {u}: 2년 앞 학번·3학년 편입 기준·예시·근거 조문 명시", "2년 앞 학번" in n["text"] and "3학년 편입 기준" in n["text"] and "2023학번" in n["text"]
+              and all(any(a in b for b in n["basis"]) for a in arts) and any("해석" in b for b in n["basis"]), str(n)[:120])
+    check("편입 안내 한밭·충남·목원: 확인하지 못했어요 + 근거 없음", all("확인하지 못했어요" in S.transfer_note(u)["text"] and not S.transfer_note(u)["basis"] for u in ("한밭", "충남", "목원")))
+    for u, y, d, q, want in (("배재", 2025, "IT경영정보학과", "혁신교육과미래설계 꼭 들어야 해?", ["0학점 이수 필수"]),
+                             ("목원", 2024, "경영학부", "체험교과목 이수해야 해?", ["체험교과목"]),
+                             ("충남", 2024, "경영학부", "졸업 평점은 몇 점이야?", ["졸업 평점"]),
+                             ("한밭", 2024, "융합경영학과", "졸업하려면 뭐가 더 필요해?", [])):
+        got = S.checklist_hint(q, u, y, d)
+        check(f"체크리스트 안내 규칙: {q} → {want}", got == want, str(got))
+    check("체크리스트 안내: 학번이 정수가 아니면(모름·범위 밖) 붙이지 않는다", S.checklist_hint("혁신교육과미래설계 꼭 들어야 해?", "배재", None, "IT경영정보학과") == [])
+    # 개발용 51문항: 최신 채택 답변 기준 '확인 불가' 배지가 뜨는 문항 중 안내 줄이 붙는 문항 수(2026-11-09 기록: 17문항 중 0개)
+    import csv
+    ans = {}
+    for tag in ("e8-full", "e9-r1", "e10-r1", "e11-r1", "e13-r1"):
+        for f in (ROOT / "eval" / "results").glob(f"*_dev_base-rag_gpt-6-luna_{tag}.csv"):
+            for r in csv.DictReader(open(f, encoding="utf-8-sig")):
+                ans[r["id"]] = r["답변"]
+    unans, shown = [], []
+    for r in csv.DictReader(open(ROOT / "eval" / "questions_dev.csv", encoding="utf-8-sig")):
+        if r["id"] in ans and R.UNANSWERABLE_RE.search(engine.split_answer(ans[r["id"]])[0]):
+            unans.append(r["id"])
+            if r["대학"] in S.BASE_DEPT and r["학번"].isdigit() and 2022 <= int(r["학번"]) <= 2026 and \
+                    S.checklist_hint(r["질문"], r["대학"], int(r["학번"]), S.BASE_DEPT[r["대학"]], "신입", True):
+                shown.append(r["id"])
+    check(f"체크리스트 안내: 개발용 '확인 불가' 문항 {len(unans)}개 중 안내가 붙는 문항 0개(기록과 같음)", len(unans) == 17 and shown == [], f"{len(unans)} {shown}")
     # 1-2. 동치 점검의 재시도 허용 규칙(B01 흔들림만 허용하고 나머지는 바로 실패)
     def row(chunks, dists, coll="base-x", user="u1", filt='{"대학": "배재"}'):
         return {"컬렉션": coll, "검색청크": ";".join(chunks), "검색거리": ";".join(dists), "검색근거표시": ";".join(chunks), "필터": filt,
@@ -348,9 +378,178 @@ def cmd_citations():
     check(f"답 속 [n]이 모두 카드 번호 중에 있다 (실제 답변 {checked}건: 조회·계산·RAG)", checked > 100 and not bad, f"{len(bad)}건 {bad[:4]}")
 
 
+def cmd_app():
+    """화면 스모크(streamlit AppTest). 엔진은 가짜, 로그 DB는 임시 파일이라 API 비용 0. 8단계 동결 확인에도 쓴다."""
+    import os
+    import sqlite3
+    import tempfile
+    os.environ["SERVICE_LOG_DB"] = os.path.join(tempfile.mkdtemp(), "log.db")
+    import streamlit as st
+    from streamlit.testing.v1 import AppTest
+    APP = str(ROOT / "src" / "app.py")
+    calls = []
+
+    class Fake:
+        badge = True
+
+        def answer(self, q, univ=None, year=None, dept=None):
+            calls.append((q, univ, year, dept))
+            body = "첫 문단이에요. " * 10 + "\n\n" + "둘째 문단 자세한 설명이에요. " * 25
+            return {"answer": body, "tail": "출처: [1] 학칙", "sources": [
+                {"kind": "기준표", "id": "HN-001", "nums": [1], "title": "한남 기준표 · 졸업학점", "target": "전체", "value": "120학점 이상", "status": "확정",
+                 "article": "학칙 제41조", "pages": "20", "grade": "A 규정 원문"},
+                {"kind": "규정", "id": "c1", "nums": [3], "title": "학칙", "article": "제5조", "pages": "PDF 3쪽", "grade": "A 규정 원문", "edition": "현행(2026)", "univ": "한남"}],
+                "badges": [{"kind": "확인불가", "text": "확인되지 않은 내용"}] if Fake.badge else [], "route": "조회", "cost_usd": 0.0012, "latency_ms": 900,
+                "question_used": "한남대 학생: " + q, "used_dept": False, "calc_text": "72-66=6", "tokens_in": 1, "tokens_out": 1, "embed_tokens": 1}
+
+    saved = engine.Engine
+    engine.Engine = Fake
+    st.cache_resource.clear()
+    try:
+        def run():
+            return AppTest.from_file(APP, default_timeout=120).run()
+
+        def pick(at, univ=None, year=None, entry=None):
+            if univ:
+                at.sidebar.selectbox(key="univ").set_value(univ)
+                at.run()
+            if year is not None:
+                at.sidebar.selectbox(key="year").set_value(year)
+            if entry:
+                at.sidebar.radio(key="entry").set_value(entry)
+            at.run()
+            return at
+
+        LOG_METRICS = {"질문 수", "총 비용($)", "평균 응답(초)", "도움이 됐다", "도움이 안 됐다"}  # 로그 탭의 지표는 남은 학점 화면과 무관하다
+
+        def metrics(at):
+            return {x.label: x.value for x in at.metric if x.label not in LOG_METRICS}
+
+        def texts(els):
+            return " ".join(e.value for e in els)
+
+        def expander(at, label):
+            hits = [e for e in at.expander if e.label == label]
+            return hits[0] if hits else None
+
+        at = run()
+        check("화면: 첫 화면 예외 없음·탭 4개", not at.exception and [t.label for t in at.tabs] == ["규정 안내", "남은 학점", "학사 선택 비교", "로그"], str([e.value for e in at.exception]))
+        bad = []
+        for u in S.BASE_DEPT:
+            for y in [*S.YEARS, "모름", "범위 밖"]:
+                for en in ("신입", "편입"):
+                    pick(at, u, y, en)
+                    if at.exception:
+                        bad.append((u, y, en, at.exception[0].value[:60]))
+        check("화면: 대학 5 × 학번 선택 7 × 입학 구분 2 = 70조합 예외 없음", not bad, str(bad[:3]))
+        # 남은 학점: 배재 2023 · 편입 · 총 125 (이번 화면 개편의 기준 사례)
+        at = pick(run(), "배재", 2023, "편입")
+        side = texts(at.sidebar.info)
+        check("화면: 배재 편입이면 학번 아래에 안내(2년 앞 학번·3학년 편입 기준·2023학번 예시)", "2년 앞 학번" in side and "3학년 편입 기준" in side and "2023학번" in side, side[:80])
+        e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
+        check("화면: 배재 편입 안내의 근거 접기(제17조 ⑦·제64조 ④·해석 명시)", len(e) == 1 and "제17조 ⑦" in texts(e[0].markdown) and "제64조 ④" in texts(e[0].markdown) and "해석" in texts(e[0].markdown))
+        at.number_input(key="tot|배재|2023|IT경영정보학과").set_value(125)
+        at.run()
+        m = metrics(at)
+        check("화면: 배재 2023 편입 총 125 → 큰 숫자 '졸업까지 남은 학점' 5 하나뿐", m == {"졸업까지 남은 학점": "5"}, str(m))
+        check("화면: 편입 안내(편입 인정학점도 총 이수 학점에 포함) 표시", "편입 인정학점도 총 이수 학점에 포함" in texts(at.info))
+        check("화면: 맨 위 근거는 접기('근거 보기'), 졸업학점 줄은 한 줄", expander(at, "근거 보기") is not None and any("졸업학점 **130학점 이상**" in x.value for x in at.markdown))
+        check("화면: 노란 경고(합 불일치)가 맨 위에 뜨지 않는다", not any("34" in w.value or "합이 안 맞는" in w.value for w in at.warning), texts(at.warning)[:80])
+        at.number_input(key="done|배재|2023|IT경영정보학과|교양").set_value(5)
+        at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(48)
+        at.run()
+        m = metrics(at)
+        check("화면: 영역 입력 후에도 큰 숫자는 5, 영역별 합 49는 '(참고)' 이름으로 접기 안에만", m.get("졸업까지 남은 학점") == "5" and m.get("영역별 남은 학점의 합(참고)") == "49"
+              and expander(at, "영역별 결과 (참고)") is not None, str(m))
+        ref = expander(at, "참고")
+        rt = texts(ref.markdown) if ref else ""
+        check("화면: '참고' 접기에 표 합계 불일치(34↔36)와 영역 미지정 학점 28을 쉬운 말로", "34학점" in rt and "36학점" in rt and "28학점" in rt and "학생이 할 일은 없어요" in rt, rt[:120])
+        check("화면: 편입이면 영역별 확인은 참고용 안내", "참고용이에요" in " ".join(c.value for c in at.caption))
+        check("화면: 개설 과목 자리 표시", any("개설 과목" in x.value for x in at.markdown))
+        # 편입 + 영역만 입력(총 비움) → 큰 숫자를 내지 않고 총 입력 요청
+        at = pick(run(), "배재", 2024, "편입")
+        at.number_input(key="done|배재|2024|IT경영정보학과|교양").set_value(5)
+        at.run()
+        check("화면: 편입 + 영역만 입력하면 큰 숫자 없이 '총 이수 학점을 먼저' 안내", not metrics(at) and "총 이수 학점을 먼저 입력" in texts(at.info), str(metrics(at)))
+        # 신입: 총 비움 + 영역 입력 → 영역 합으로 계산(충남 2024: 30+80+5=115 → 130-115=15)
+        at = pick(run(), "충남", 2024, "신입")
+        ks = [k for k in (x.key for x in at.number_input) if k.startswith("done|충남|2024|경영학부")]
+        for k, v in zip(ks, (30, 80, 5)):
+            at.number_input(key=k).set_value(v)
+        at.run()
+        m = metrics(at)
+        check("화면: 신입은 총 칸이 비면 영역 합(115)으로 계산 → 15 + 안내 한 줄", len(ks) == 3 and m.get("졸업까지 남은 학점") == "15" and m.get("영역별 남은 학점의 합(참고)") == "17"
+              and any("영역 입력의 합(115학점)" in c.value for c in at.caption), str(m))
+        at.number_input(key="tot|충남|2024|경영학부").set_value(120)
+        at.run()
+        check("화면: 총 이수 학점을 넣으면 그 값이 우선(130−120=10)", metrics(at).get("졸업까지 남은 학점") == "10")
+        # 사이드바 편입 안내: 학교별, 신입이면 없음
+        for u, want, has_basis in (("한남", "2년 앞 학번", True), ("한밭", "확인하지 못했어요", False), ("충남", "확인하지 못했어요", False), ("목원", "확인하지 못했어요", False)):
+            at = pick(run(), u, 2023, "편입")
+            e = [x for x in at.sidebar.expander if x.label == "근거 보기"]
+            check(f"화면: {u} 편입 안내('{want}')·근거 접기 {'있음' if has_basis else '없음'}", want in texts(at.sidebar.info) and bool(e) == has_basis, texts(at.sidebar.info)[:60])
+        check("화면: 신입이면 사이드바 편입 안내 없음", not pick(run(), "배재", 2023, "신입").sidebar.info)
+        # 한밭(T3)·경영 계열 외 학과(T0): 총 입력만, 참고에 기준표
+        at = pick(run(), "한밭", 2023, "신입")
+        at.number_input(key="tot|한밭|2023|융합경영학과").set_value(100)
+        at.run()
+        check("화면: 한밭(T3) 총 100 → 졸업까지 남은 학점 표시·참고 표", metrics(at).get("졸업까지 남은 학점") is not None and expander(at, "참고") is not None and not at.exception)
+        # 비교 탭
+        at = pick(run(), "목원", 2022, "신입")
+        at.sidebar.radio(key="deptkind_목원").set_value("경영학부 (경영 계열)")
+        at.run()
+        txt = " ".join(x.value for x in at.success)
+        check("화면: 비교 목원 2022 복수전공이 6학점 적음", "복수전공" in txt and "6학점" in txt, txt)
+        # 규정 안내: 질문 → 근거 카드 번호, 체크리스트 안내 줄
+        calls.clear()
+        at = pick(run(), "한남", 2023, "신입")
+        at.text_input(key="q_input").set_value("졸업학점 몇 학점이야?")
+        [b for b in at.button if b.label == "질문하기"][0].click()
+        at.run()
+        cards = [x for x in at.expander if x.label.startswith("근거 보기 (")]
+        ct = texts(cards[0].markdown) if cards else ""
+        check("화면: 질문 처리(사이드바 값 전달)·배지·접기·근거 카드에 원래 번호([1]·[3])", len(calls) == 1 and calls[0][1:3] == ("한남", 2023) and len(at.warning) >= 1
+              and any("자세히 보기" in x.label for x in at.expander) and "**[1] 한남 기준표" in ct and "**[3] 학칙" in ct, ct[:80])
+        check("화면: 체크리스트와 안 겹치는 질문에는 안내 줄이 안 붙는다('확인 불가' 배지가 있어도)", "체크리스트에 관련 요건" not in texts(at.info))
+        at = pick(run(), "배재", 2025, "신입")
+        at.text_input(key="q_input").set_value("혁신교육과미래설계 꼭 들어야 해?")
+        [b for b in at.button if b.label == "질문하기"][0].click()
+        at.run()
+        check("화면: '확인 불가' 배지 + 겹치는 질문 → '남은 학점 탭 체크리스트에 관련 요건이 있을 수 있어요' (항목: 0학점 이수 필수)",
+              "남은 학점 탭 체크리스트에 관련 요건이 있을 수 있어요" in texts(at.info) and "0학점 이수 필수" in texts(at.info), texts(at.info)[:100])
+        Fake.badge = False
+        at = pick(run(), "배재", 2025, "신입")
+        at.text_input(key="q_input").set_value("혁신교육과미래설계 꼭 들어야 해?")
+        [b for b in at.button if b.label == "질문하기"][0].click()
+        at.run()
+        check("화면: '확인 불가' 배지가 없으면 안내 줄도 없다", "체크리스트에 관련 요건" not in texts(at.info))
+        Fake.badge = True
+        con = sqlite3.connect(os.environ["SERVICE_LOG_DB"])
+        cols = [r[1] for r in con.execute("pragma table_info(query_log)")]
+        check("화면: 로그에 질문 기록·열에 학점·평점·입학구분 없음", con.execute("select count(*) from query_log").fetchone()[0] == 3
+              and not any(k in c for c in cols for k in ("credit", "gpa", "entry", "학점", "평점")), str(cols))
+        at = pick(run(), "한남", "범위 밖", "신입")
+        check("화면: 범위 밖 학번은 남은 학점·비교 탭에 경고", sum("2022~2026학번만" in w.value for w in at.warning) >= 2)
+
+        class Boom:
+            def answer(self, *a, **k):
+                raise RuntimeError("boom")
+        engine.Engine = Boom
+        st.cache_resource.clear()
+        at2 = run()
+        at2.text_input(key="q_input").set_value("아무 질문")
+        [b for b in at2.button if b.label == "질문하기"][0].click()
+        at2.run()
+        errs = con.execute("select error from query_log where error is not null").fetchall()
+        check("화면: 엔진 오류가 나도 화면 유지·오류 안내·로그 기록", not at2.exception and len(at2.error) == 1 and len(errs) == 1 and "RuntimeError" in errs[0][0])
+    finally:
+        engine.Engine = saved
+        st.cache_resource.clear()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("what", nargs="?", default="all", choices=["all", "equiv", "logic", "citations", "_snapshot"])  # _snapshot: 재시도용 내부 명령(JSON 한 줄 출력)
+    ap.add_argument("what", nargs="?", default="all", choices=["all", "equiv", "logic", "citations", "app", "_snapshot"])  # _snapshot: 재시도용 내부 명령(JSON 한 줄 출력)
     ap.add_argument("--write-baseline", action="store_true")
     a = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
@@ -363,6 +562,8 @@ def main():
         cmd_logic()
     if a.what in ("all", "citations") and not a.write_baseline:
         cmd_citations()
+    if a.what in ("all", "app") and not a.write_baseline:
+        cmd_app()
     bad = [n for n, ok, _ in RESULTS if not ok]
     if RESULTS:
         print(f"\n{len(RESULTS) - len(bad)}/{len(RESULTS)} 통과" + (f", 실패 {bad}" if bad else ""))

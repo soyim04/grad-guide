@@ -352,3 +352,59 @@ def explain_question(univ, year, dept):
 
 def remaining_major(total_major, done_major):
     return max(0.0, float(total_major) - float(done_major))
+
+
+# ---------- 편입생 학번 안내 (사이드바) ----------
+# 2026-11-09 조사(eval/experiments.md E14 기록). 자동 변환은 하지 않는다: 규정이 편입 연도를 입학 연도보다 2년 늦게 병기한 것은
+# 3학년 편입 기준으로 읽는 해석이라 2학년 편입 등에는 맞지 않을 수 있다.
+TRANSFER_NOTE = {
+    "배재": {"text": "규정상 편입생은 편입 연도보다 2년 앞 학번 기준을 따라요(3학년 편입 기준). 예: 2025년 3학년 편입 → 2023학번 선택. 2학년 편입 등은 학과에 확인하세요.",
+             "basis": ["배재대학교 학칙 시행세칙(Ⅰ) 제17조 ⑦: \"2024학년도 이전 입학생, 2026년 이전 편입생\" / \"2025학년도 이후 입학생, 2027년 이후 편입생\" (편입 연도 = 입학 연도 + 2)",
+                       "배재대학교 학칙 시행세칙(Ⅰ) 제64조 ④: 편입학생의 교육과정 이수는 편입학한 학년의 학부(과) 교육과정을 적용함을 원칙으로 한다",
+                       "규정에 3학년 편입이라고 적힌 것은 아니에요. 편입 연도와 입학 연도가 2년 차이로 병기된 것을 3학년 편입 기준으로 읽은 해석이에요."]},
+    "한남": {"text": "규정상 편입생은 편입 연도보다 2년 앞 학번 기준을 따라요(3학년 편입 기준). 예: 2025년 3학년 편입 → 2023학번 선택. 2학년 편입 등은 학과에 확인하세요.",
+             "basis": ["한남대학교 학칙 시행세칙 제12조: \"2019~2022학년도 입학생, 2021~2024년 편입생\" / \"2023학년도 이후 입학생, 2025년 이후 편입생\" (편입 연도 = 입학 연도 + 2)",
+                       "한남대학교 학칙 시행세칙 제20조의2: 전공 이수방법도 같은 방식으로 \"2023학년도 이후 입학생, 2025년 이후 편입생\"을 구분",
+                       "규정에 3학년 편입이라고 적힌 것은 아니에요. 편입 연도와 입학 연도가 2년 차이로 병기된 것을 3학년 편입 기준으로 읽은 해석이에요."]},
+}
+TRANSFER_UNKNOWN = "편입생에게 어느 학번 기준이 적용되는지 규정에서 확인하지 못했어요. 학과에 확인하세요."
+
+
+def transfer_note(univ):
+    """입학 구분이 편입일 때 사이드바에 보여 줄 안내: {text, basis[]} (basis는 근거 접기용, 없으면 [])"""
+    return TRANSFER_NOTE.get(univ) or {"text": TRANSFER_UNKNOWN, "basis": []}
+
+
+# ---------- 규정 안내 탭: "확인 불가" 답에 붙이는 체크리스트 안내 ----------
+# 규칙(2026-11-09 승인): 호출하는 쪽이 "확인 불가" 배지가 있을 때만 쓴다. 질문 속 낱말이 체크리스트 항목의 제목 낱말이나 항목 본문의
+# 긴 고유 낱말(6자 이상)과 겹칠 때 그 항목을 돌려준다. "졸업·이수·필수·학점" 같은 일반 낱말은 제외한다.
+# 알려진 한계: "학점 말고 졸업하려면 뭐가 더 필요해?" 같은 문장 의도는 보지 않는다(개발용 문항 맞춤이 되므로 추가하지 않기로 함).
+HINT_GENERIC = {"졸업", "이수", "필수", "학점", "요건", "항목", "필요", "프로그램", "일반학과", "학과", "학생", "대학", "졸업요건", "이수해야", "해야"}
+_JOSA = re.compile(r"(은|는|이|가|을|를|에|에서|도|의|와|과|로|으로|인가|인지|이나|나)$")
+
+
+def _hint_words(text):
+    out = set()
+    for w in re.findall(r"[가-힣]{2,}", text):
+        out.add(_JOSA.sub("", w) if len(w) > 3 else w)
+    return out
+
+
+def _hint_keys(item):
+    keys = {w for w in _hint_words(item["title"]) if w not in HINT_GENERIC}
+    keys |= {w for w in _hint_words(item["text"]) if len(w) >= 6 and w not in HINT_GENERIC}
+    return keys
+
+
+def checklist_hint(question, univ, year, dept, entry="신입", teacher=False):
+    """질문과 관련 있어 보이는 체크리스트 항목 제목 목록(중복 없음, 없으면 [])"""
+    if not isinstance(year, int):
+        return []
+    compact = re.sub(r"\s", "", question)
+    titles = []
+    for it in checklist(univ, year, dept, entry, teacher):
+        if it["kind"] not in ("요건", "없음"):
+            continue
+        if any(k in compact for k in _hint_keys(it)) and it["title"] not in titles:
+            titles.append(it["title"])
+    return titles

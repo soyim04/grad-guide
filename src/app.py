@@ -56,6 +56,7 @@ def sidebar():
     st.sidebar.header("내 정보")
     univ = st.sidebar.selectbox("대학", UNIVS, key="univ")
     year_choice = st.sidebar.selectbox("학번(입학년도)", YEAR_CHOICES, format_func=lambda y: f"{y}학번" if isinstance(y, int) else y, key="year")
+    transfer_slot = st.sidebar.container()  # 입학 구분이 편입이면 학번 선택 바로 아래에 안내를 채운다
     base = S.BASE_DEPT[univ]
     others = [t for t in S.grad_targets(univ) if t != base]
     kind = st.sidebar.radio("학과", [f"{base} (경영 계열)", "그 외 학과"], key=f"deptkind_{univ}")
@@ -65,6 +66,14 @@ def sidebar():
         dept = st.sidebar.selectbox("학과·계열 선택", others, key=f"dept_{univ}")
         st.sidebar.caption("경영 계열 외 학과는 총 졸업학점까지만 계산해요. 영역별 기준은 기준표에 없어요.")
     entry = st.sidebar.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
+    if entry == "편입":
+        note = S.transfer_note(univ)
+        with transfer_slot:
+            st.info(note["text"], icon="🔁")
+            if note["basis"]:
+                with st.expander("근거 보기"):
+                    for line in note["basis"]:
+                        st.markdown(f"- {line}")
     teacher = False
     if S.has_teacher_rows(univ):
         teacher = st.sidebar.checkbox("사범대학 소속 또는 교직이수자", key=f"teacher_{univ}")
@@ -126,8 +135,10 @@ def show_sources(out):
             st.caption("모델이 답 끝에 적은 출처 줄: " + out["tail"].replace("\n", " "))
 
 
-def show_answer(out, log_id, key):
+def show_answer(out, log_id, key, hint=None):
     show_badges(out["badges"])
+    if hint and any(b["kind"] == "확인불가" for b in out["badges"]):  # '확인 불가' 배지가 있을 때만(2026-11-09 승인 규칙)
+        st.info("남은 학점 탭 체크리스트에 관련 요건이 있을 수 있어요. (항목: " + " · ".join(hint) + ")", icon="📋")
     show_body(out["answer"])
     if out.get("calc_text"):
         with st.expander("계산 과정"):
@@ -173,82 +184,28 @@ def tab_ask(sc):
         with st.spinner("규정을 찾고 답을 만드는 중이에요…"):
             out, log_id = ask(q.strip(), sc)
         if out:
-            hist.insert(0, {"q": q.strip(), "out": out, "log_id": log_id, "scope": f"{sc['univ']}대 {sc['year'] if sc['year'] else '학번 모름'}"})
+            hint = S.checklist_hint(q.strip(), sc["univ"], sc["year"], sc["dept"], sc["entry"], sc["teacher"])
+            hist.insert(0, {"q": q.strip(), "out": out, "log_id": log_id, "hint": hint,
+                            "scope": f"{sc['univ']}대 {sc['year'] if sc['year'] else '학번 모름'}"})
     for i, h in enumerate(hist[:5]):
         if i == 0:
             st.markdown(f"**Q. {h['q']}**  ·  <small>{h['scope']}</small>", unsafe_allow_html=True)
-            show_answer(h["out"], h["log_id"], key=h["log_id"])
+            show_answer(h["out"], h["log_id"], key=h["log_id"], hint=h.get("hint"))
         else:
             with st.expander(f"이전 질문: {h['q']}"):
-                show_answer(h["out"], None, key=f"old{h['log_id']}")
+                show_answer(h["out"], None, key=f"old{h['log_id']}", hint=h.get("hint"))
 
 
 # ---------- ② 남은 학점 ----------
 
 def num(label, key, **kw):
-    return st.number_input(label, min_value=0.0, step=0.5, key=key, format="%g", **kw)
+    """빈 칸(None)을 허용하는 숫자 입력. 비어 있으면 '아직 입력 안 함'으로 본다."""
+    return st.number_input(label, min_value=0.0, step=0.5, key=key, format="%g", value=None, **kw)
 
 
-def tab_remaining(sc):
-    st.subheader("남은 학점")
-    if not need_year(sc):
-        return
-    univ, year, dept = sc["univ"], sc["year"], sc["dept"]
-    plan = S.area_plan(univ, dept, year)
-    ctx = f"{univ}|{year}|{dept}"
-    if plan["grad"] is None:
-        for n in plan["notes"]:
-            st.warning(n, icon="⚠️")
-    else:
-        grad = plan["grad"]
-        st.markdown(f"**{univ}대 {year}학번 · {dept}** — 졸업학점 **{S.fmt_value(grad)}** "
-                    f"({'/'.join(x for x in (plan['method'],) if x) or '단일'} 기준, `{grad['행ID']}` {grad['출처조항']})")
-        for n in plan["notes"]:
-            st.info(n)
-        for b in plan["badges"]:
-            st.warning(b, icon="⚠️")
-        done, child_done, total_override = {}, {}, None
-        if plan["tier"] in ("T1", "T2"):
-            st.markdown("지금까지 이수한 학점을 영역별로 넣어 주세요.")
-            cols = st.columns(min(3, len(plan["areas"])))
-            for i, a in enumerate(plan["areas"]):
-                with cols[i % len(cols)]:
-                    done[a["name"]] = num(f"{a['name']} (기준 {S.fmt_value(a['row'])})", f"done|{ctx}|{a['name']}")
-            with st.expander("세부 항목별 남은 학점 보기 (선택)"):
-                for a in plan["areas"]:
-                    for r in a["children"]:
-                        child_done[r["항목"]] = num(f"{r['항목']} (기준 {S.fmt_value(r)})", f"kid|{ctx}|{r['항목']}")
-            extra = st.checkbox("총 이수 학점을 따로 입력할게요 (영역에 안 들어가는 학점이 있을 때)", key=f"tot_on|{ctx}")
-            if extra:
-                total_override = num("지금까지 이수한 총 학점", f"tot|{ctx}")
-        else:
-            if plan["tier"] == "T3":
-                with st.expander("참고: 기준표의 영역별 기준 (남은 학점은 계산하지 않아요)"):
-                    rows = [{"항목": r["항목"], "이수유형": r["이수유형"] or "-", "기준": S.fmt_value(r), "조건": r["조건"], "행ID": r["행ID"], "출처": r["출처조항"][:60]}
-                            for r in plan["ref_rows"]]
-                    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-            total_override = num("지금까지 이수한 총 학점", f"tot|{ctx}")
-        if plan["tier"] in ("T1", "T2") or total_override is not None:
-            rem = S.remaining(plan, done, total_override, child_done if any(child_done.values()) else None)
-            c1, c2 = st.columns(2)
-            c1.metric("총 남은 학점", f"{rem['total_remaining']:g}", help=f"졸업학점 {rem['grad']:g} − 이수 {rem['total_done']:g}")
-            if rem["areas"]:
-                c2.metric("영역별 남은 학점의 합", f"{rem['area_remaining_sum']:g}", help="영역마다 부족한 학점만 더한 값. 총 남은 학점과 다를 수 있어요.")
-            if rem["areas"]:
-                df = pd.DataFrame([{"영역": a["name"], "기준": S.fmt_value(a["row"]), "이수": a["done"], "남은 학점": a["remaining"], "비고": a["note"]} for a in rem["areas"]])
-                st.dataframe(df, hide_index=True, width="stretch")
-                for a in rem["areas"]:
-                    shown = [k for k in a["kids"] if k["done"] or k["remaining"]]
-                    if any(k["done"] for k in a["kids"]):
-                        with st.expander(f"{a['name']} 세부 항목"):
-                            st.dataframe(pd.DataFrame([{"항목": k["name"], "기준": S.fmt_value(k["row"]), "이수": k["done"], "남은 학점": k["remaining"]} for k in shown]),
-                                         hide_index=True, width="stretch")
-                if any(a["over"] for a in rem["areas"]):
-                    st.caption(S.OVER_NOTE + ".")
-            if rem["unassigned"]:
-                st.caption(f"{S.UNASSIGNED_NOTE} {rem['unassigned']:g}학점이 있어요. 어느 영역으로 채워도 되는지는 규정 표에 없어서 '일반선택'이라고 단정하지 않아요(학과 확인 필요).")
+def show_checklist(sc):
     st.markdown("#### 학점 외 이수 요건")
-    items = S.checklist(univ, year, dept, sc["entry"], sc["teacher"])
+    items = S.checklist(sc["univ"], sc["year"], sc["dept"], sc["entry"], sc["teacher"])
     icon = {"요건": "✅", "없음": "➖", "확인불가": "⚠️", "해당없음": "➖"}
     if not items:
         st.caption("기준표에 이 조건의 학점 외 요건이 없어요.")
@@ -259,6 +216,111 @@ def tab_remaining(sc):
             st.caption(f"`{s['id']}` · {s['source']} · 쪽 {s['pages']} · 등급 {s['grade']} · 상태 {s['status']}")
         if it.get("extra"):
             st.caption(it["extra"])
+
+
+def reference_lines(plan, rem):
+    """'참고' 접기에 넣을 안내(쉬운 말). 학생이 할 수 있는 일이 없는 표 불일치·영역 미지정 학점은 여기로 모은다."""
+    lines = [n for n in plan["notes"]]
+    for a in plan["areas"]:
+        c = a["check"]
+        if c and c[0] in ("미달", "불일치") and a["min"] is not None:
+            lines.append(f"규정 표에서 {a['name']} 세부 항목을 더하면 {c[1]:g}학점인데 '{a['name']} 계'는 {a['min']:g}학점으로 적혀 있어요. "
+                         "표 자체가 이렇게 되어 있어서 학생이 할 일은 없어요. 궁금하면 학과에 확인하세요.")
+    if plan["unassigned"]:
+        parts = "·".join(f"{a['name']} {a['min']:g}" for a in plan["areas"] if a["min"] is not None)
+        lines.append(f"졸업에 필요한 {float(plan['grad']['값']):g}학점 중 {parts}(으)로 정해진 학점을 빼면 {plan['unassigned']:g}학점이 남아요. "
+                     f"이 {plan['unassigned']:g}학점을 어느 영역으로 채우는지는 규정 표에 나와 있지 않아요. 학과에 확인하세요.")
+    if rem and any(a["over"] for a in rem["areas"]):
+        lines.append(S.OVER_NOTE + ".")
+    return lines
+
+
+def tab_remaining(sc):
+    st.subheader("남은 학점")
+    if not need_year(sc):
+        return
+    univ, year, dept = sc["univ"], sc["year"], sc["dept"]
+    transfer = sc["entry"] == "편입"
+    plan = S.area_plan(univ, dept, year)
+    ctx = f"{univ}|{year}|{dept}"
+    if plan["grad"] is None:
+        for n in plan["notes"]:
+            st.warning(n, icon="⚠️")
+        show_checklist(sc)
+        return
+    grad = plan["grad"]
+    areas_on = plan["tier"] in ("T1", "T2")
+    # 1. 맨 위: 졸업학점 한 줄 + 근거는 접기
+    st.markdown(f"**{univ}대 {year}학번 · {dept}** — 졸업학점 **{S.fmt_value(grad)}**")
+    with st.expander("근거 보기"):
+        st.markdown(f"`{grad['행ID']}` · 이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
+    if transfer:
+        st.info("편입 인정학점도 총 이수 학점에 포함해 넣어 주세요. 편입 인정학점의 영역 구분은 학과에서 확인하세요.", icon="🔁")
+    # 2. 총 이수 학점이 기본 입력
+    total_in = num("지금까지 이수한 총 학점", f"tot|{ctx}")
+    big = st.container()  # 큰 숫자 자리(아래 영역별 입력을 읽은 뒤 채운다)
+    if not areas_on:
+        st.caption("이 조건은 영역별 계산을 하지 않고 총 졸업학점까지만 계산해요. 이유와 기준표는 아래 '참고'에 있어요.")
+    show_checklist(sc)
+    # 영역별 확인(선택): 입력·표·영역별 남은 합은 모두 접기 안에서만
+    done, child_done, any_area = {}, {}, False
+    if areas_on:
+        with st.expander("영역별 확인 (선택)"):
+            if transfer:
+                st.caption("참고용이에요. 편입 인정학점이 영역에 안 들어가 실제보다 크게 나올 수 있어요. 편입 인정학점의 영역 구분은 학과에서 확인하세요.")
+            else:
+                st.caption("영역별로 넣으면 영역마다 얼마나 남았는지 볼 수 있어요.")
+            cols = st.columns(min(3, len(plan["areas"])))
+            for i, a in enumerate(plan["areas"]):
+                with cols[i % len(cols)]:
+                    done[a["name"]] = num(f"{a['name']} (기준 {S.fmt_value(a['row'])})", f"done|{ctx}|{a['name']}") or 0.0
+            if st.checkbox("세부 항목까지 보기", key=f"kids_on|{ctx}"):
+                for a in plan["areas"]:
+                    for r in a["children"]:
+                        child_done[r["항목"]] = num(f"{r['항목']} (기준 {S.fmt_value(r)})", f"kid|{ctx}|{r['항목']}") or 0.0
+            any_area = any(done.values())
+    # 계산(기존 S.remaining 그대로): 총 이수 학점이 있으면 그 값, 없으면 영역 입력의 합(편입은 편입학점이 빠져 쓰지 않음)
+    rem, fallback = None, False
+    kids = child_done if any(child_done.values()) else None
+    if total_in is not None:
+        rem = S.remaining(plan, done, total_in, kids)
+    elif any_area and not transfer:
+        rem, fallback = S.remaining(plan, done, None, kids), True
+    # 3. 큰 숫자는 "졸업까지 남은 학점" 하나
+    with big:
+        if rem is not None:
+            st.metric("졸업까지 남은 학점", f"{rem['total_remaining']:g}", help=f"졸업학점 {rem['grad']:g} − 이수 {rem['total_done']:g}")
+            if fallback:
+                st.caption(f"총 이수 학점 칸이 비어 있어 영역 입력의 합({rem['total_done']:g}학점)으로 계산했어요.")
+            if rem["total_remaining"] == 0:
+                st.success("졸업학점을 채웠어요. 학점 외 요건과 필수 항목도 확인하세요.")
+        elif transfer and any_area:
+            st.info("편입생은 편입 인정학점이 영역에 안 들어가서, 총 이수 학점을 먼저 입력해야 졸업까지 남은 학점을 알려 드릴 수 있어요.")
+        else:
+            st.caption("총 이수 학점을 입력하면 졸업까지 남은 학점을 알려 드려요.")
+    # 영역별 결과: 접기 안에서만 보여 준다
+    if areas_on and rem is not None and any_area:
+        with st.expander("영역별 결과 (참고)"):
+            st.metric("영역별 남은 학점의 합(참고)", f"{rem['area_remaining_sum']:g}", help="영역마다 부족한 학점만 더한 값. 졸업까지 남은 학점과 다를 수 있어요.")
+            df = pd.DataFrame([{"영역": a["name"], "기준": S.fmt_value(a["row"]), "이수": a["done"], "남은 학점": a["remaining"], "비고": a["note"]} for a in rem["areas"]])
+            st.dataframe(df, hide_index=True, width="stretch")
+            for a in rem["areas"]:
+                shown = [k for k in a["kids"] if k["done"] or k["remaining"]]
+                if any(k["done"] for k in a["kids"]):
+                    st.markdown(f"**{a['name']} 세부 항목**")
+                    st.dataframe(pd.DataFrame([{"항목": k["name"], "기준": S.fmt_value(k["row"]), "이수": k["done"], "남은 학점": k["remaining"]} for k in shown]),
+                                 hide_index=True, width="stretch")
+    # 4. 참고(맨 아래): 표 합계 불일치·영역 미지정 학점 등
+    lines = reference_lines(plan, rem)
+    if lines or plan["tier"] == "T3":
+        with st.expander("참고"):
+            for ln in lines:
+                st.markdown(f"- {ln}")
+            if plan["tier"] == "T3":
+                rows = [{"항목": r["항목"], "이수유형": r["이수유형"] or "-", "기준": S.fmt_value(r), "조건": r["조건"], "행ID": r["행ID"], "출처": r["출처조항"][:60]}
+                        for r in plan["ref_rows"]]
+                st.markdown("기준표의 영역별 기준(남은 학점은 계산하지 않아요)")
+                st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
     st.divider()
     with st.container(border=True):
         st.markdown("#### 이번 학기 개설 과목 안내")
