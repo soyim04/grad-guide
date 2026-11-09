@@ -2,6 +2,8 @@
 이 결과를 보고 특정 질문 맞춤으로 고치지 않는다(고칠 땐 일반 규칙만). 기대 답은 사람이 따로 채점한다.
 
 실행: .venv\\Scripts\\python.exe src\\service_check_run.py   (API 비용 약 $0.01)
+  --only 7 11       지정한 번호의 문항만 실행(기본: 13문항 전부)
+  --tag after-e16   결과 파일 이름 꼬리표(service_check_YYYYMMDD_<tag>.csv)
 """
 
 import argparse
