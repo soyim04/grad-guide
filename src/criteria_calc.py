@@ -27,15 +27,22 @@ A_ITEMS = {
 }
 
 
-def _pick_one(univ, item, year, q):
-    """항목 행 1개와 사유. 없거나 여러 개면 (None, 사유)"""
+def _cand_spec(univ, item, year, q):
     cand = [r for r in L.CRITERIA if r["대학"] == univ and r["항목"] == item and r["기준값여부"] == "기준"
             and (year is None or L.in_range(r, year)) and "교직" not in r["이수유형"]]
     spec = [r for r in cand if r["대상"] != "전체" and any(L.norm(t) and L.norm(t) in L.norm(q) for t in r["대상"].split())]
+    return cand, spec
+
+
+def _pick_one(univ, item, year, q, bundle_spec=False):
+    """항목 행 1개와 사유. 없거나 여러 개면 (None, 사유).
+    bundle_spec: 묶음의 다른 항목에서 질문이 지목한 학과 행을 찾았으면 True. 이때 이 항목에 학과 행이 없으면 대학 전체 행을 쓴다
+    (E16: 조회의 E12 규칙과 같다. 배재·충남은 주전공 학점만 학과 행이고 이수학점은 대학 전체 행이다)."""
+    cand, spec = _cand_spec(univ, item, year, q)
     mentions = [m for m in L.MENTION_RE.findall(q) if m not in L.SCHOOL_WORDS and m != "일반학과"]
     if spec:
         rows = spec
-    elif mentions:
+    elif mentions and not bundle_spec:
         return None, f"질문의 {mentions}에 맞는 대상 행 없음"
     else:
         rows = [r for r in cand if r["대상"] == "전체"]
@@ -65,11 +72,12 @@ def _term(n, row, label):
 def _calc_a(q, univ, year):
     other = "다전공" if "다전공" in q else "복수전공"
     rows, sums, lines = [], {}, []
+    bundle_spec = any(_cand_spec(univ, it, year, q)[1] for items in A_ITEMS.values() for it in items)
     for key, name in (("부전공", "부전공"), ("복수", other)):
         major_item, extra_item = A_ITEMS[key]
         picked = []
         for item in (major_item, extra_item):
-            row, why = _pick_one(univ, item, year, q)
+            row, why = _pick_one(univ, item, year, q, bundle_spec)
             if row is None:
                 return None, why
             picked.append(row)

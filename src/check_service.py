@@ -231,6 +231,15 @@ def cmd_logic():
           rows_of("목원대 2022학번 학생: 비교과는 몇 시간 이수해야 해?") == ["MW-064"], str(rows_of("목원대 2022학번 학생: 비교과는 몇 시간 이수해야 해?")))
     check("회귀 E13-1: 수치 의도 없는 비교과 질문(신청 방법)은 여전히 RAG", rows_of("목원대 2022학번 학생: 비교과 프로그램은 어떻게 신청해?") is None)
     check("회귀 E13-1: '비교'는 여전히 계산·비교로 RAG(비교과가 아닌 비교 질문)", rows_of("한밭대 2024학번 학생: 졸업학점이랑 평점 중에 비교해 줘") is None)
+    # 1-1c. 회귀 사례(E16, 서비스 점검 #7): 학과 한정 주전공 학점 행 + 대학 전체 이수학점 행인 대학도 계산 경로로 가고, 결과가 학사 선택 비교 탭(S.compare)과 같다
+    for u, y, d, want in (("배재", 2023, "IT경영정보학과", [72.0, 75.0]), ("배재", 2025, "IT경영정보학과", [78.0, 96.0]), ("충남", 2024, "경영학부", [78.0, 78.0])):
+        q, used = engine.choose_question("부전공이랑 다전공 중 뭐가 전공학점이 적어?", u, y, d)
+        res = criteria_calc.calc(q)[0]
+        cmp_ = S.compare(u, y, d)
+        got = list(res["values"].values()) if res else None
+        check(f"회귀 E16: {u} {y} 부전공↔다전공 질문 경로(계산) 결과 {want} = S.compare 결과", res is not None and got == want == [t["total"] for t in cmp_["table"]] and used, f"{q} {got}")
+    check("회귀 E16: 학과를 안 적은 배재 질문(주전공 학점이 학과 한정 행뿐)은 여전히 RAG로 폴백(P04와 같음)",
+          criteria_calc.calc("배재대 2024학번은 부전공이랑 다전공 중에 전공학점이 더 적게 드는 건 뭐야?")[0] is None)
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙
