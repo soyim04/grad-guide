@@ -84,6 +84,19 @@ def _grade_label(g):
     return {"A": "A 규정 원문", "B": "B 교육과정 편람", "C": "C 학사안내", "D": "D 입학·공지"}.get(g, g or "")
 
 
+def cited_pairs(row, body, criteria_route=False):
+    """답에 나온 근거 번호와 그 번호가 가리키는 청크·행 ID를 (번호, ID) 쌍으로 돌려준다(번호 오름차순).
+    번호는 모델이 본 검색 번호 그대로이고 카드에서 다시 매기지 않는다. 모델이 JSON 인용 목록에 안 넣었어도 답 본문에 [n]이 있으면 포함한다.
+    조회·계산 경로에서 인용이 하나도 없으면 넘어온 행 전부를 근거로 본다."""
+    retrieved = [i for i in str(row["검색청크"]).split(";") if i]
+    nums = [int(n) for n in str(row["인용"]).split(";") if n.strip().isdigit()]
+    nums += [int(n) for n in re.findall(r"\[(\d+)\]", body)]
+    nums = sorted({n for n in nums if 1 <= n <= len(retrieved)})
+    if not nums and criteria_route:
+        nums = list(range(1, len(retrieved) + 1))
+    return [(n, retrieved[n - 1]) for n in nums]
+
+
 class Engine:
     def __init__(self):
         load_dotenv(R.ROOT / ".env")
@@ -116,9 +129,11 @@ class Engine:
     # ---- 출처 카드·배지 ----
     def _sources_and_badges(self, row, body):
         criteria_route = row["컬렉션"] in ("criteria-calc", "criteria-lookup")
-        ids = [i for i in row["인용청크"].split(";") if i]
-        if not ids and criteria_route:  # 조회·계산 경로는 넘어온 행이 곧 근거다
-            ids = [i for i in row["검색청크"].split(";") if i]
+        pairs = cited_pairs(row, body, criteria_route)
+        ids = [cid for _, cid in pairs]
+        nums_of = {}  # 같은 행·조항을 한 카드로 합칠 때 모델이 본 번호를 모두 남긴다
+        for n, cid in pairs:
+            nums_of.setdefault(cid, []).append(n)
         sources, badges, seen = [], [], set()
         if criteria_route:
             for rid in ids:
@@ -127,7 +142,7 @@ class Engine:
                 seen.add(rid)
                 r = L.BY_ID[rid]
                 value = f"{r['값']}{r['단위']} {r['비교']}".strip() if r["값"] else r["상태"]
-                sources.append({"kind": "기준표", "id": rid, "title": f"{r['대학']} 기준표 · {r['항목']}", "target": r["대상"], "value": value,
+                sources.append({"kind": "기준표", "id": rid, "nums": nums_of[rid], "title": f"{r['대학']} 기준표 · {r['항목']}", "target": r["대상"], "value": value,
                                 "status": r["상태"], "article": r["출처조항"], "pages": r["출처쪽"], "grade": _grade_label(r["출처등급"])})
                 if r["상태"] == "잠정":
                     badges.append({"kind": "잠정", "text": f"{rid}은 잠정 값이에요(개정 전 조문 등을 확인하지 못함)"})
@@ -136,16 +151,17 @@ class Engine:
         else:
             metas = {}
             if ids:
-                got = self.col.get(ids=ids, include=["metadatas"])
+                got = self.col.get(ids=list(dict.fromkeys(ids)), include=["metadatas"])
                 metas = dict(zip(got["ids"], got["metadatas"]))
             groups = {}
             for cid in ids:
                 m = metas.get(cid)
                 if not m:
                     continue
-                g = groups.setdefault((m["규정명"], m["조항"]), {"kind": "규정", "id": cid, "title": m["규정명"], "article": m["조항"],
+                g = groups.setdefault((m["규정명"], m["조항"]), {"kind": "규정", "id": cid, "nums": [], "title": m["규정명"], "article": m["조항"],
                                                               "pages": [], "grade": _grade_label(m["출처등급"]), "edition": f"{m['판본']}({m['판본연도']})" if m.get("판본연도") else m.get("판본", ""),
                                                               "univ": m["대학"]})
+                g["nums"] = sorted(set(g["nums"]) | set(nums_of[cid]))
                 pdf = f"PDF {m['쪽_PDF']}쪽" + (f" (인쇄 {m['쪽_인쇄']}쪽)" if m.get("쪽_인쇄") not in (None, "", m["쪽_PDF"]) else "")
                 if pdf not in g["pages"]:
                     g["pages"].append(pdf)

@@ -114,11 +114,13 @@ def show_sources(out):
         return
     with st.expander(f"근거 보기 ({len(srcs)}건)"):
         for s in srcs:
+            tag = " ".join(f"[{n}]" for n in s.get("nums", []))  # 답 속 번호와 같은 번호(모델이 본 원래 번호, 다시 매기지 않음)
+            tag = f"{tag} " if tag else ""
             if s["kind"] == "기준표":
-                st.markdown(f"**{s['title']}** · `{s['id']}`  \n대상 {s['target']} · 값 **{s['value']}** · 상태 {s['status']}  \n"
+                st.markdown(f"**{tag}{s['title']}** · `{s['id']}`  \n대상 {s['target']} · 값 **{s['value']}** · 상태 {s['status']}  \n"
                             f"{s['article']} · 쪽 {s['pages']} · 등급 {s['grade']}")
             else:
-                st.markdown(f"**{s['title']}** · {s['article']}  \n{s['univ']} · {s['pages']} · 등급 {s['grade']}"
+                st.markdown(f"**{tag}{s['title']}** · {s['article']}  \n{s['univ']} · {s['pages']} · 등급 {s['grade']}"
                             + (f" · 판본 {s['edition']}" if s.get("edition") else ""))
         if out.get("tail"):
             st.caption("모델이 답 끝에 적은 출처 줄: " + out["tail"].replace("\n", " "))
