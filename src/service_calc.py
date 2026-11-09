@@ -1,0 +1,354 @@
+"""7단계 서비스 계산 (순수 Python, LLM 없음): 남은 학점·학점 외 체크리스트·학사 선택 비교.
+
+규칙은 모두 data/criteria.csv 행에서 읽는다(행에 없는 값은 만들지 않는다). 설계는 CLAUDE.md 7단계와 data/criteria_schema.md 규칙 8·11·12·13을 따른다.
+- 영역별 계산(남은 학점)은 경영 계열 학과(BASE_DEPT)의 기본 이수 방식(단수, 충남 2026~는 심화단수, 배재 2025~는 융합과정)만 지원한다.
+  판정 (2단계 드라이런, 25개 대학×학번 조합: T1 8 · T2 7 · T3 10)
+    T1 영역 합이 졸업학점과 맞음 → 영역별 남은 학점
+    T2 영역 합이 졸업학점보다 작음 → 영역별 + "규정 표에 영역이 지정되지 않은 학점 N", 하위 항목 합이 계와 다르면 "합이 안 맞는 영역 있음" 배지
+    T3 교양이 % 표기이거나 교양·전공 행이 없음 → 계산 없이 기준표 행을 참고 표로 보여 준다(한남·한밭)
+    T0 경영 계열 밖 학과 → 총 졸업학점까지만
+- 학사 선택 비교는 E11 규칙 A(criteria_calc)를 학과를 넣은 질문 문장으로 호출한다(규칙을 새로 만들지 않는다).
+- 사용자가 입력한 학점·입학 구분은 이 모듈이 저장하지 않는다(성적 저장 제외).
+"""
+
+import re
+
+import criteria_calc
+import criteria_lookup as L
+
+BASE_DEPT = {"배재": "IT경영정보학과", "충남": "경영학부", "한남": "경영정보학과", "한밭": "융합경영학과", "목원": "경영학부"}
+YEARS = [2022, 2023, 2024, 2025, 2026]
+ENTRY_TYPES = ["신입", "편입", "재입학"]
+TOP = ("교양", "전공", "일반선택", "대학특화", "공유혁신")
+KID_PREFIX = {
+    "교양": ("교양필수", "교양핵심", "교양선택", "교양_"),
+    "전공": ("전공필수", "전공선택", "전공기초", "전공핵심", "전공심화", "기본전공", "심화전공"),
+    "공유혁신": ("공유혁신_",),
+}
+OVER_NOTE = "초과분 인정 여부는 학과 확인 필요"
+UNASSIGNED_NOTE = "규정 표에 영역이 지정되지 않은 학점"
+
+
+def _detail(item):
+    return item in TOP or any(item.startswith(p) for ks in KID_PREFIX.values() for p in ks)
+
+
+def default_method(univ, year):
+    """기본 이수 방식. 충남 2026~는 책자가 심화단수를 기본 유형으로 적는다(스키마 충남 매핑), 배재 2025~는 단수가 불가라 융합과정."""
+    if univ == "충남" and year >= 2026:
+        return "심화단수"
+    if univ == "배재" and year >= 2025:
+        return "융합과정"
+    return "단수"
+
+
+def _rank(r, dept):
+    if dept and r["대상"] == dept:
+        return 0
+    if r["대상"] == "전체":
+        return 2
+    return 9
+
+
+def _best(univ, dept, year, pred, utype):
+    """항목마다 가장 구체적인 대상 행(학과 > 전체, 규칙 8). 기준 행만."""
+    best = {}
+    for r in L.CRITERIA:
+        if r["대학"] != univ or r["기준값여부"] != "기준" or not pred(r["항목"]) or not L.in_range(r, year) or r["이수유형"] != utype:
+            continue
+        k = _rank(r, dept)
+        if k == 9:
+            continue
+        cur = best.get(r["항목"])
+        if cur is None or k < cur[0]:
+            best[r["항목"]] = (k, [r])
+        elif k == cur[0]:
+            cur[1].append(r)
+    return [x for _, rs in best.values() for x in rs]
+
+
+def _rng(r):
+    """(최소, 최대) 학점. % 표기는 None. 이내는 (0, 값)"""
+    if r["단위"] == "%":
+        return None
+    lo = float(r["값"]) if r["값"] else 0.0
+    hi = float(r["값_최대"]) if r["값_최대"] else lo
+    return (0.0, lo) if r["비교"] == "이내" else (lo, hi)
+
+
+def fmt_value(r):
+    if not r["값"]:
+        return "(값 없음)"
+    v = r["값"] + (f"~{r['값_최대']}" if r["값_최대"] else "")
+    if r["단위"] == "%":
+        return f"{v}% {r['비교']}".strip()
+    return f"{v}{r['단위']} {r['비교']}".strip()
+
+
+def source_of(r):
+    return {"id": r["행ID"], "source": r["출처조항"], "pages": r["출처쪽"], "file": r["출처파일"], "grade": r["출처등급"], "status": r["상태"]}
+
+
+# ---------- 졸업학점 ----------
+
+def grad_targets(univ):
+    """졸업학점 기준 행이 있는 대상 이름(학과·계열·단과대학). '그 외 학과' 선택지"""
+    return sorted({r["대상"] for r in L.CRITERIA if r["대학"] == univ and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and r["대상"] != "전체"})
+
+
+def graduation_row(univ, dept, year, method=None):
+    """총 졸업학점 행 하나(이수 방식 행 우선, 없으면 이수유형이 빈 공통 행: 규칙 11). 없거나 여러 개면 None"""
+    method = method or default_method(univ, year)
+    for t in (method, ""):
+        rows = _best(univ, dept, year, lambda i: i == "졸업학점", t)
+        if len(rows) == 1:
+            return rows[0]
+    return None
+
+
+# ---------- 영역별 계획 ----------
+
+def _child_check(kids, parent_row):
+    pv = _rng(parent_row)
+    klo = sum(_rng(r)[0] for r in kids)
+    khi = sum(_rng(r)[1] for r in kids)
+    if klo == khi == pv[0] == pv[1]:
+        return "일치", klo, khi
+    if klo <= pv[0] <= khi:
+        return "호환", klo, khi
+    if khi < pv[0]:
+        return "미달", klo, khi
+    return "불일치", klo, khi
+
+
+def area_plan(univ, dept, year):
+    """영역별 계획. 반환 dict: tier, grad(행), method, areas[], unassigned, badges[], notes[], ref_rows[]"""
+    method = default_method(univ, year)
+    grad = graduation_row(univ, dept, year, method)
+    plan = {"univ": univ, "dept": dept, "year": year, "method": method, "grad": grad, "areas": [], "unassigned": None,
+            "badges": [], "notes": [], "ref_rows": [], "tier": "T0"}
+    if grad is None:
+        plan["notes"].append("이 대학·학번·학과의 총 졸업학점 기준을 기준표에서 찾지 못했어요(확인 불가).")
+        return plan
+    if dept != BASE_DEPT[univ]:
+        plan["notes"].append("영역별 기준은 경영 계열 학과만 기준표에 있어서, 이 학과는 총 졸업학점까지만 계산해요.")
+        return plan
+    det = []
+    for r in L.CRITERIA:  # 참고 표: 모든 이수 방식의 영역 행
+        if r["대학"] == univ and r["기준값여부"] == "기준" and _detail(r["항목"]) and L.in_range(r, year) and _rank(r, dept) < 9 and r["상태"] != "불가":
+            det.append(r)
+    plan["ref_rows"] = det
+    rows = _best(univ, dept, year, _detail, method)
+    tops = {r["항목"]: r for r in rows if r["항목"] in TOP and r["상태"] != "불가"}
+    g = float(grad["값"])
+    lo = hi = 0.0
+    pct = False
+    for name in TOP:
+        if name not in tops:
+            continue
+        row = tops[name]
+        v = _rng(row)
+        if v is None:
+            pct = True
+            plan["areas"].append({"name": name, "row": row, "min": None, "max": None, "op": row["비교"], "children": [], "check": None})
+            continue
+        lo += v[0]
+        hi += v[1]
+        kids = [r for r in rows if r["항목"] not in TOP and any(r["항목"].startswith(p) for p in KID_PREFIX.get(name, ()))]
+        check = _child_check(kids, row) if kids else None
+        plan["areas"].append({"name": name, "row": row, "min": v[0], "max": v[1], "op": row["비교"], "children": kids,
+                              "check": check})
+    if pct:
+        plan["tier"] = "T3"
+        plan["notes"].append("교양이 졸업학점 대비 %로 표기돼 있고 학점 환산(올림 등) 규정을 확인하지 못해 영역별 계산은 하지 않아요. 기준표만 참고로 보여 드려요.")
+        return plan
+    if "교양" not in tops or "전공" not in tops:
+        plan["tier"] = "T3"
+        plan["notes"].append("이 학과의 기본 이수 방식에는 교양·전공 영역 기준이 함께 있지 않아 영역별 계산은 하지 않아요. 기준표만 참고로 보여 드려요.")
+        return plan
+    if lo <= g <= hi:
+        plan["tier"] = "T1"
+    elif lo < g:
+        plan["tier"] = "T2"
+        plan["unassigned"] = g - lo
+    else:
+        plan["tier"] = "T3"
+        plan["notes"].append(f"영역 기준 합({lo:g})이 졸업학점({g:g})보다 커서 영역별 계산은 하지 않아요.")
+        return plan
+    for a in plan["areas"]:
+        c = a["check"]
+        if c and c[0] in ("미달", "불일치"):
+            plan["badges"].append(f"합이 안 맞는 영역 있음: {a['name']} 하위 항목 합 {c[1]:g}학점이 계 {a['min']:g}학점과 달라요")
+    return plan
+
+
+def remaining(plan, done, total_done=None, child_done=None):
+    """남은 학점. done: {영역: 이수 학점}. total_done이 None이면 영역 입력의 합.
+    영역별 남은 학점과 총 남은 학점은 따로 계산한다(초과분이 다른 영역을 대신하는지는 규정 표에 없다)."""
+    out_areas = []
+    for a in plan["areas"]:
+        if a["min"] is None:
+            continue
+        d = float(done.get(a["name"], 0) or 0)
+        lo, hi, op = a["min"], a["max"], a["op"]
+        rem = 0.0 if op == "이내" else max(0.0, lo - d)
+        over = max(0.0, d - hi)
+        note = ""
+        if over > 0:
+            note = f"기준을 {over:g}학점 넘겨 이수했어요. " + ("한도(이내)를 넘은 학점은 졸업학점으로 인정되지 않을 수 있어요. " if op == "이내" else "") + OVER_NOTE
+        kids = []
+        for r in a["children"]:
+            kd = float((child_done or {}).get(r["항목"], 0) or 0)
+            kv = _rng(r)
+            kids.append({"name": r["항목"], "row": r, "done": kd, "min": kv[0], "max": kv[1], "op": r["비교"],
+                         "remaining": 0.0 if r["비교"] == "이내" else max(0.0, kv[0] - kd), "over": max(0.0, kd - kv[1])})
+        out_areas.append({"name": a["name"], "row": a["row"], "min": lo, "max": hi, "op": op, "done": d, "remaining": rem, "over": over,
+                          "note": note, "kids": kids})
+    g = float(plan["grad"]["값"])
+    sum_done = float(total_done) if total_done is not None else sum(x["done"] for x in out_areas)
+    return {"areas": out_areas, "grad": g, "total_done": sum_done, "total_remaining": max(0.0, g - sum_done),
+            "area_remaining_sum": sum(x["remaining"] for x in out_areas), "unassigned": plan["unassigned"]}
+
+
+# ---------- 학점 외 체크리스트 ----------
+
+def _entry_word(entry):
+    return {"편입": "편입", "재입학": "재입학"}.get(entry)
+
+
+def _entry_applies(cond, entry):
+    """조건 칸의 입학 구분 표기: '편입학자·재입학자 제외'면 그 구분은 해당 없음, '편입학생'(제외 없음)이면 편입만 해당"""
+    words = [w for w in ("편입", "재입학") if w in cond]
+    if not words:
+        return True
+    if "제외" in cond:
+        return _entry_word(entry) not in words
+    return _entry_word(entry) in words
+
+
+def _teacher_applies(cond, teacher):
+    """사범·교직 표기: '(사범대학·교직이수자 제외)'면 일반학과, '사범대학 소속 또는 교직이수자'면 사범·교직 이수자"""
+    if re.search(r"(사범|교직)[^,]*제외", cond):
+        return not teacher
+    if re.search(r"사범|교직", cond):
+        return bool(teacher)
+    return True
+
+
+def _pick_rows(univ, dept, year, item):
+    rows = [r for r in L.CRITERIA if r["대학"] == univ and r["기준값여부"] == "기준" and r["항목"] == item and L.in_range(r, year) and _rank(r, dept) < 9]
+    dept_rows = [r for r in rows if r["대상"] == dept]
+    return dept_rows or rows  # 규칙 8: 학과 행이 있으면 대학 행을 덮어쓴다
+
+
+def has_teacher_rows(univ):
+    return any(r["대학"] == univ and r["항목"] == "체험교과목_이수" for r in L.CRITERIA)
+
+
+def checklist(univ, year, dept, entry="신입", teacher=False):
+    """학점 외 요건. criteria.csv에 있는 행만 쓴다. 항목: {title, kind(요건|없음|확인불가|해당없음), text, status, src}"""
+    items = []
+
+    def add(title, kind, text, r, extra=""):
+        items.append({"title": title, "kind": kind, "text": text, "status": r["상태"] if r else "", "src": source_of(r) if r else None, "extra": extra})
+
+    for r in _pick_rows(univ, dept, year, "평점_최저"):
+        if r["상태"] == "없음":
+            add("졸업 평점", "없음", f"{r['출처조항']}의 졸업요건에 평점 조건이 없다고 되어 있어요. (상관없다는 뜻은 아니니 학과에 확인하세요)", r)
+        elif r["상태"] == "확인불가" or not r["값"]:
+            add("졸업 평점", "확인불가", "졸업 최저 평점을 규정에서 확인하지 못했어요(확인 불가).", r)
+        else:
+            add("졸업 평점", "요건", f"졸업하려면 전체 평점평균 {float(r['값']):.2f}점 이상이 필요해요.", r, r["비고"] if "의예과" in r["비고"] else "")
+    seen = set()
+    for r in _pick_rows(univ, dept, year, "비교과_이수"):
+        cond = r["조건"]
+        if r["상태"] == "없음":
+            add("비교과", "없음", f"{r['대상']}은 비교과 이수 요건이 없다고 되어 있어요({r['출처조항']}).", r)
+        elif _entry_applies(cond, entry):
+            if r["행ID"] not in seen:
+                seen.add(r["행ID"])
+                add("비교과", "요건", f"비교과를 {r['값']}{r['단위']} 이수해야 해요." + (f" (조건: {cond})" if cond else ""), r)
+        else:
+            add("비교과", "해당없음", f"입학 구분 '{entry}'은 이 요건에서 제외돼요. (조건: {cond})", r)
+    for r in L.CRITERIA:
+        if r["대학"] == univ and r["기준값여부"] == "기준" and "이수 필수" in r["조건"] and L.in_range(r, year) and _rank(r, dept) < 9:
+            seg = [s.strip() for s in r["조건"].split(";") if "이수 필수" in s][-1]
+            add("0학점 이수 필수", "요건", f"{seg} — 학점은 {r['값']}학점이라 남은 학점에는 더하지 않지만, 이수해야 하는 필수 항목이에요.", r)
+    for r in _pick_rows(univ, dept, year, "체험교과목_이수"):
+        cond = r["조건"]
+        if not _teacher_applies(cond, teacher):
+            continue
+        if r["상태"] == "없음":
+            add("체험교과목", "없음", f"일반학과는 이 요건이 없어요({r['출처조항']}).", r)
+        elif _entry_applies(cond, entry):
+            add("체험교과목", "요건", f"체험교과목을 {r['값']}{r['단위']} 이수해야 해요. (조건: {cond})", r)
+        else:
+            add("체험교과목", "해당없음", f"입학 구분 '{entry}'은 이 요건에서 제외돼요. (조건: {cond})", r)
+    return items
+
+
+# ---------- 학사 선택 비교 ----------
+
+SIDES = (("부전공", "부전공시_주전공_전공학점", "부전공_이수학점"), ("복수", "복수전공시_주전공_전공학점", "복수전공_이수학점"))
+
+
+def compare_question(univ, year, dept):
+    term = "다전공" if univ in ("배재", "한남") else "복수전공"
+    head = f"{univ}대 {year}학번" + (f" {dept}" if dept else "")
+    return f"{head} 학생은 부전공이랑 {term} 중에 전공학점이 더 적게 드는 건 뭐야?"
+
+
+def _one(univ, dept, year, item):
+    """항목 행 하나(학과 > 전체, 규칙 8). 교직 이수유형·'비교 제외' 행(규칙 10)·불가 행은 선택지에서 뺀다. 반환: (행 또는 None, 사유)"""
+    rows = [r for r in L.CRITERIA if r["대학"] == univ and r["기준값여부"] == "기준" and r["항목"] == item and L.in_range(r, year)
+            and "교직" not in r["이수유형"] and not r["조건"].startswith("비교 제외") and r["상태"] != "불가" and _rank(r, dept) < 9]
+    if not rows:
+        return None, "기준표에 해당 행이 없어요"
+    k = min(_rank(r, dept) for r in rows)
+    rows = [r for r in rows if _rank(r, dept) == k]
+    if len(rows) != 1:
+        return None, f"행이 {len(rows)}개라 하나로 정할 수 없어요"
+    r = rows[0]
+    if r["상태"] in ("확인불가", "없음") or not re.fullmatch(r"\d+(\.\d+)?", r["값"] or ""):
+        return None, f"{r['행ID']}의 값을 확인할 수 없어요(상태 {r['상태']})"
+    return r, ""
+
+
+def compare(univ, year, dept):
+    """부전공 ↔ 복수·다전공 전공학점 비교(전공학점 합 = 주전공 요구 학점 + 이수 학점). 행은 스키마 규칙 8로 항목마다 고른다.
+    주전공 학점 행이 없으면 그 쪽 합은 계산하지 않고 '확인 불가'로 둔다(학과 확인 필요). 반환 dict(ok, table[], diff, less, ...)"""
+    table, reasons = [], []
+    for key, major_item, extra_item in SIDES:
+        name = "부전공" if key == "부전공" else ("다전공" if univ in ("배재", "한남") else "복수전공")
+        major, why_major = _one(univ, dept, year, major_item)
+        extra, why_extra = _one(univ, dept, year, extra_item)
+        total = float(major["값"]) + float(extra["값"]) if major and extra else None
+        for why, label in ((why_major, f"{name}의 주전공 요구 학점"), (why_extra, f"{name}의 이수 학점")):
+            if why:
+                reasons.append(f"{label}: {why}")
+        table.append({"name": name, "major": major, "extra": extra, "total": total})
+    if not any(t["extra"] for t in table):
+        return {"ok": False, "why": "; ".join(reasons), "question": compare_question(univ, year, dept)}
+    full = all(t["total"] is not None for t in table)
+    less = diff = None
+    if full:
+        a, b = table
+        diff = abs(a["total"] - b["total"])
+        less = None if diff == 0 else (a["name"] if a["total"] < b["total"] else b["name"])
+    rows = [r for t in table for r in (t["major"], t["extra"]) if r]
+    return {"ok": True, "full": full, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,
+            "notes": [r["비고"] for r in rows if "선택 불가" in r["비고"]],
+            "question": compare_question(univ, year, dept), "department_hint": dept}
+
+
+def explain_question(univ, year, dept):
+    """LLM 설명(E11 계산 경로)을 쓸 수 있는 질문 문장. 학과를 넣은 문장이 안 되면 학과 없이, 둘 다 안 되면 None"""
+    for d in ((dept, None) if dept else (None,)):
+        q = compare_question(univ, year, d)
+        if criteria_calc.calc(q)[0] is not None:
+            return q
+    return None
+
+
+def remaining_major(total_major, done_major):
+    return max(0.0, float(total_major) - float(done_major))
