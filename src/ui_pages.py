@@ -620,11 +620,13 @@ def _kept_widget(kind, label, kkey, wkey, **kw):
     return st.checkbox(label, value=keep().get(kkey, False), key=wkey, on_change=_sync, **kw)
 
 
-def course_html(c, days):
+def course_html(c, days, show_grade=False):
     """과목 하나(분반 목록은 접기). 강한 제한 문구가 있는 분반 수는 배지로, 비고 원문은 모두 작은 글씨로 보여 준다"""
     secs = CR.filter_sections(c, days)
     nlim = CR.remaining_count(secs)
     head = f'<b>{U.esc(c["name"])}</b> · {U.esc(c["credit"])}학점' + (f' · {U.esc(c["kind"])}' if c["kind"] in ("전필", "전선") else "") + f' · 분반 {len(secs)}개'
+    if show_grade and c.get("grade"):
+        head += f' · 대상 {U.esc(c["grade"])}'
     if nlim:
         head += " " + U.badge("warn", "수강 제한 있음" if nlim == len(secs) else f"수강 제한 있음 {nlim}개")
     rows = ""
@@ -677,6 +679,7 @@ def show_courses(sc):
                                 on_change=lambda: keep().__setitem__("crs_area", st.session_state["crs_area_w"]))
         with c2:
             days = _kept_widget("multi", "요일 (고르지 않으면 전체)", "crs_days", "crs_days_w", options=list(CR.DAYS[:6]) + ["시간 미정"])
+            grades = _kept_widget("multi", "대상 학년 (전공만, 고르지 않으면 전체)", "crs_grades", "crs_grades_w", options=CR.GRADES) if view == "전공" else []
         if not is_base:
             st.caption("전공 과목은 IT경영정보학과만 지원해요. 교양 영역은 모든 학과에 같이 보여 드려요.")
         if sc["entry"] == "편입":
@@ -691,11 +694,11 @@ def show_courses(sc):
             st.multiselect("이미 이수한 과목(목록에서 뺄게요)", options=opts, default=[c for c in keep().get("crs_done", []) if c in names], key=f"crs_done_w", on_change=_sync_done,
                            format_func=lambda k: names.get(k, k))
         done_all = set(keep().get("crs_done", []))
-        courses = [c for c in CR.group_courses([s for s in pool if s["과목코드"] not in done_all]) if CR.filter_sections(c, days)]
+        courses = [c for c in CR.group_courses([s for s in pool if s["과목코드"] not in done_all]) if CR.filter_sections(c, days) and (not grades or c["grade"] in grades)]
         nsec = sum(len(CR.filter_sections(c, days)) for c in courses)
         nexcl = len(set(names) & done_all)
         md(f'<div class="card-sub"><b>{U.esc(CR.AREA_LABEL[view])}</b> · {len(courses)}과목 · {nsec}분반'
-           + (f' · 요일 {U.esc(", ".join(days))}' if days else "") + (f' · 이수 제외 {nexcl}과목' if nexcl else "") + "</div>")
+           + (f' · 요일 {U.esc(", ".join(days))}' if days else "") + (f' · {U.esc(", ".join(grades))}' if grades else "") + (f' · 이수 제외 {nexcl}과목' if nexcl else "") + "</div>")
         if view in COURSE_NOTES:
             st.caption(COURSE_NOTES[view])
         if days and "시간 미정" not in days:
@@ -711,10 +714,10 @@ def show_courses(sc):
         for g, cs in groups.items():
             if g and (len(groups) > 1 or view in ("공유혁신", "전공")):
                 parts += f'<div class="crs-group">{U.esc(g)} · {len(cs)}과목</div>'
-            parts += "".join(course_html(c, days) for c in cs)
+            parts += "".join(course_html(c, days, view == "전공") for c in cs)
         if parts:
             md(parts)
-        md(f'<div class="ck-src" style="margin-top:.8rem">{U.esc(CR.FOOTER)} 수강 가능 여부는 판단하지 않아요. 비고의 제한 문구는 꼭 직접 확인하세요. 이수한 과목 표시는 이 화면을 닫으면 사라져요.</div>')
+        md(f'<div class="ck-src" style="margin-top:.8rem">{U.esc(CR.FOOTER)}{" " + U.esc(CR.GRADE_LINE) if view != "전공" else ""} 수강 가능 여부는 판단하지 않아요. 비고의 제한 문구는 꼭 직접 확인하세요. 이수한 과목 표시는 이 화면을 닫으면 사라져요.</div>')
 
 
 def page_courses(sc):

@@ -50,8 +50,19 @@ def read_rows(path):
     return rows
 
 
+def grade_map():
+    """학년별 전공 파일 4개(개설과목_2026-2_IT경영정보_N학년.xlsx) → {과목코드: 대상 학년}. 기존 IT경영정보 파일과 과목코드가 다르면 실패"""
+    def body(path):
+        rows = read_rows(path)
+        assert rows[0].get("C") == "과목명" and rows[0].get("M") == "비고", (path, rows[0])
+        return [(r["B"], r["C"], r["A"]) for r in rows[2:] if r.get("C")]
+    per = {g: body(RAW / f"개설과목_2026-2_IT경영정보_{g}.xlsx") for g in C.GRADES}
+    return C.build_grade_map(per, body(RAW / "개설과목_2026-2_IT경영정보.xlsx"))
+
+
 def main():
     sections = []
+    gmap = grade_map()
     for name in FILES:
         path = RAW / f"개설과목_2026-2_{name}.xlsx"
         assert path.exists(), path
@@ -62,6 +73,7 @@ def main():
                 continue
             rec = {v: r.get(k, "") for k, v in COLS.items()}
             rec["파일"] = name
+            rec["대상학년"] = gmap[rec["과목코드"]] if name == "IT경영정보" else ""  # 전공만 학년 자료가 있다(교양·공유혁신은 없음)
             rec.update(C.classify(rec))
             rec["요일"] = C.parse_days(rec["시간"])
             rec["제한"] = C.is_strong_limit(rec["비고"])

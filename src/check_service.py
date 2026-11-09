@@ -412,6 +412,23 @@ def cmd_logic():
         check("개설 과목: 강한 제한 문구 판정(전용·수강제한·○○만 수강·외 수강·수강 금지는 배지, '타전공 수강 가능'·'3학년 수강 가능'·학과 나열·빈 비고는 배지 없음)",
               all(CR.is_strong_limit(t) for t in pos) and not any(CR.is_strong_limit(t) for t in neg))
         check("개설 과목: 배지 분반 225/659(34%)(파일별 IT경영 0·공유혁신 32·가상 65·교필 9·교필선 88·교선 31)", sum(1 for x in secs if x["제한"]) == 225 and [sum(1 for x in secs if x["제한"] and x["파일"] == f) for f in ("IT경영정보", "공유혁신", "공유대학가상", "교필", "교필선", "교선")] == [0, 32, 65, 9, 88, 31])
+        gcnt = {g: len({x["과목코드"] for x in secs if x["영역"] == "전공" and x["대상학년"] == g}) for g in CR.GRADES}
+        check("개설 과목: 전공 대상 학년별 과목 수 1학년 3·2학년 4·3학년 3·4학년 6, 합계 16, 전공 분반 모두 학년이 있고 교양·공유혁신·가상에는 학년이 없음",
+              gcnt == {"1학년": 3, "2학년": 4, "3학년": 3, "4학년": 6} and sum(gcnt.values()) == 16 and all(x["대상학년"] for x in secs if x["영역"] == "전공") and not any(x["대상학년"] for x in secs if x["영역"] != "전공"), str(gcnt))
+        gm_ = {x["과목코드"]: x["대상학년"] for x in secs if x["영역"] == "전공"}
+        check("개설 과목: 학년은 과목코드로 추측하지 않고 학년 파일 값(현장훈련1 EBS26601·졸업(종합)설계 EBS25401은 4학년, 코드 숫자와 다름)", gm_["EBS26601"] == "4학년" and gm_["EBS25401"] == "4학년" and gm_["EBS22107"] == "1학년")
+        base_ = [("A1", "가", "전필"), ("A2", "나", "전선")]
+        errs = 0
+        for per_, label in (({"1학년": [("A1", "가", "전필")], "2학년": [("A2", "나", "전선"), ("A3", "다", "전선")]}, "코드 집합 다름(학년 쪽이 많음)"),
+                            ({"1학년": [("A1", "가", "전필")]}, "코드 집합 다름(학년 쪽이 적음)"),
+                            ({"1학년": [("A1", "가", "전필"), ("A2", "나", "전선")], "2학년": [("A2", "나", "전선")]}, "한 과목이 두 학년"),
+                            ({"1학년": [("A1", "가", "전선")], "2학년": [("A2", "나", "전선")]}, "이수구분 다름")):
+            try:
+                CR.build_grade_map(per_, base_)
+            except ValueError:
+                errs += 1
+        check("개설 과목: 학년 파일과 기존 전공 파일의 과목코드 집합·이름·이수구분이 다르거나 한 과목이 두 학년에 있으면 실패(ValueError) 4/4, 같으면 통과",
+              errs == 4 and CR.build_grade_map({"1학년": [("A1", "가", "전필")], "2학년": [("A2", "나", "전선")]}, base_) == {"A1": "1학년", "A2": "2학년"})
         mon = [c for c in CR.group_courses(CR.sections_in(secs, 2023, "교선")) if CR.filter_sections(c, ["월"])]
         check("개설 과목: 요일 필터 — 월 선택 시 월요일 분반만, '시간 미정'은 따로 선택해야 나옴", all("월" in x["요일"] for c in mon for x in CR.filter_sections(c, ["월"]))
               and all(not x["요일"] for c in CR.group_courses(CR.sections_in(secs, 2023, "교선")) for x in CR.filter_sections(c, ["시간 미정"])))
@@ -753,6 +770,18 @@ def cmd_app():
             at.selectbox(key="crs_area_w").set_value("교양_비전설계").run()
             h = html(at)
             check("화면: [개설 과목] 2023 비전설계 영역: 22과목(진로·취창업 15 + 자기설계 7), 2025용 공유혁신 문구 없음", "22과목 · 22분반" in h and "진로·취창업 · 15과목" in h and "자기설계 · 7과목" in h and "BJ-016" in h)
+            at = nav(pick(run(), "배재", 2023, "신입"), "courses")
+            h = html(at)
+            check("화면: [E18c] 전공 목록에 대상 학년이 보이고 학년 필터가 있으며, 전공 화면에는 '학년 자료가 없어요'·'강의계획서에서 확인하세요' 문구가 없다",
+                  "대상 1학년" in h and "대상 4학년" in h and at.multiselect(key="crs_grades_w") is not None and "학년 자료가 없어요" not in h and "강의계획서에서 확인하세요" not in h and not at.exception)
+            at.multiselect(key="crs_grades_w").set_value(["4학년"]).run()
+            h = html(at)
+            check("화면: [E18c] 학년 4학년 필터 → 전공 6과목(합 16 중), 3학년 과목은 빠짐", "6과목 · 6분반" in h and "대상 4학년" in h and "대상 3학년" not in h and " · 4학년</div>" in h)
+            at.multiselect(key="crs_grades_w").set_value(["1학년", "3학년"]).run()
+            check("화면: [E18c] 학년 1·3학년 필터 → 3 + 3 = 6과목", "6과목 · 6분반" in html(at))
+            at.selectbox(key="crs_area_w").set_value("교선").run()
+            h = html(at)
+            check("화면: [E18c] 교양(교선)에는 학년 필터가 없고 '교양·공유혁신은 학년 자료가 없어요' 한 줄", [x for x in at.multiselect if x.key == "crs_grades_w"] == [] and "교양·공유혁신은 학년 자료가 없어요." in h)
             at = nav(pick(run(), "배재", 2025, "신입"), "courses")
             opts = list(at.selectbox(key="crs_area_w").options)
             check("화면: [개설 과목] 배재 2025 영역에 공유혁신 있고 비전설계(교양) 없음", "공유혁신" in opts and "교양_비전설계" not in opts)

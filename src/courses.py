@@ -11,7 +11,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 DATA_FILE = "courses_baejae_2026-2.json"
 DATA_NOTE = "2026-2학기 포털 자료 기준(2026-11-09 내려받음), 정원·수강인원은 그 시점 값"
-FOOTER = "2026-2학기 포털 자료 기준(11월 9일 내려받음)이에요. 정원과 수강 인원은 그 시점 값이라 지금과 다를 수 있어요. 대상 학년은 포털 강의계획서에서 확인하세요."
+FOOTER = "2026-2학기 포털 자료 기준(11월 9일 내려받음)이에요. 정원과 수강 인원은 그 시점 값이라 지금과 다를 수 있어요."
+GRADE_LINE = "교양·공유혁신은 학년 자료가 없어요."  # 대상 학년은 전공(IT경영정보)만 포털 학년 필터 자료로 연결했다(E18c)
+GRADES = ["1학년", "2학년", "3학년", "4학년"]
 
 # ---------- 분류 ----------
 # 교필선 비고 앞 괄호 → (영역 키, 하위)
@@ -75,6 +77,26 @@ def classify(rec):
     if "전공융합설계" in memo:
         return {"영역": "공유혁신_전공융합설계", "하위": ""}
     return {"영역": "공유혁신_미분류", "하위": ""}
+
+
+# ---------- 대상 학년(전공만) ----------
+def build_grade_map(per_grade, base):
+    """학년별 전공 파일(포털 학년 필터) → {과목코드: 대상 학년}. 과목코드로 학년을 추측하지 않는다.
+    per_grade: {"1학년": [(코드, 과목명, 이수구분), ...], ...}, base: 기존 IT경영정보 파일의 [(코드, 과목명, 이수구분), ...].
+    과목코드 집합이 다르거나, 한 과목이 두 학년에 있거나, 이름·이수구분이 다르면 ValueError."""
+    gm, info = {}, {}
+    for g, rows in per_grade.items():
+        for code, name, kind in rows:
+            if code in gm:
+                raise ValueError(f"과목코드 {code}가 {gm[code]}와 {g}에 모두 있어요")
+            gm[code], info[code] = g, (name, kind)
+    bc = {code: (name, kind) for code, name, kind in base}
+    if set(gm) != set(bc):
+        raise ValueError(f"학년 파일과 기존 IT경영정보 파일의 과목코드가 달라요: 학년에만 {sorted(set(gm) - set(bc))}, 기존에만 {sorted(set(bc) - set(gm))}")
+    diff = [code for code in bc if bc[code] != info[code]]
+    if diff:
+        raise ValueError(f"과목명·이수구분이 다른 과목코드: {diff}")
+    return gm
 
 
 # ---------- 요일 ----------
@@ -148,7 +170,7 @@ def group_courses(secs):
     """분반 → 과목코드 단위로 묶기(코드 첫 등장 순서, 이름순 정렬). 반환: [{code, name, kind, credit, sub, sections[]}]"""
     by = {}
     for s in secs:
-        c = by.setdefault(s["과목코드"], {"code": s["과목코드"], "name": s["과목명"], "kind": s["이수구분"], "credit": s["학점"], "sub": s["하위"], "sections": []})
+        c = by.setdefault(s["과목코드"], {"code": s["과목코드"], "name": s["과목명"], "kind": s["이수구분"], "credit": s["학점"], "sub": s["하위"], "grade": s.get("대상학년", ""), "sections": []})
         c["sections"].append(s)
     return sorted(by.values(), key=lambda c: (c["name"], c["code"]))
 
@@ -185,6 +207,10 @@ def report(sections):
     print("\n## 공유혁신 미분류 비고(앞 70자)")
     for s in [s for s in sections if s["영역"] == "공유혁신_미분류"]:
         print(f"  {s['과목코드']} {s['과목명']} {s['분반']} | {s['비고'][:70]}")
+    print("\n## 전공 대상 학년(과목 수)")
+    from collections import Counter as _C
+    gc = _C(s["대상학년"] for s in sections if s["영역"] == "전공")
+    print("  ", {g: len({s["과목코드"] for s in sections if s["영역"] == "전공" and s["대상학년"] == g}) for g in GRADES}, "· 학년 없음 전공 분반", gc.get("", 0))
     print("\n## 시간 파싱")
     kinds = Counter(time_kind(s["시간"])[0] for s in sections)
     print("  ", dict(kinds))
