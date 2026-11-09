@@ -33,6 +33,7 @@ import openai
 from dotenv import load_dotenv
 from openai import OpenAI
 
+import criteria_calc
 import criteria_lookup
 import query_expand
 import query_filter
@@ -107,6 +108,24 @@ LOOKUP_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·�
 4. 학번이 여러 개면 학번마다 나눠 답한다. 학번이 없고 행의 입학년도 구간이 다르면 구간별로 말한다.
 5. 숫자나 조건마다 행 번호를 [1]처럼 붙이고, 답변 마지막에 인용한 행의 출처(규정·조항·쪽)를 행에 적힌 그대로 한 줄로 적는다.
 6. 행에 없는 내용은 지어내지 말고 "확인 불가"라고 한다.
+
+출력 필드
+- 답변: 사용자에게 보여 줄 답변 ([1] 같은 행 번호 포함)
+- 인용: 답변에 실제로 쓴 행 번호 목록"""
+
+# 실험 11: 계산·비교 질문은 코드(criteria_calc)가 계산하고 LLM은 [계산 결과]를 설명만 한다
+CALC_VERSION = "calc-v1"
+CALC_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·한밭·목원)의 졸업요건 안내 도우미입니다.
+아래 [계산 결과]와 [기준표 조회 결과]만으로, 한국어로 쉽게 답하세요. [계산 결과]는 코드가 기준표 값으로 계산한 것입니다.
+
+규칙
+1. [계산 결과]의 숫자·식·결론은 그대로 옮긴다. 새로 계산하거나 다시 비교하지 않고, 결론을 바꾸지 않는다.
+2. 질문이 묻는 방향(더 적은 쪽, 더 많은 쪽, 가장 낮은 학교 등)에 맞춰 결론을 먼저 말하고, 이어서 각 쪽의 식과 합을 보여 준다.
+3. 값을 말할 때 행 번호를 [1]처럼 붙인다. 상태가 '잠정'인 값은 '잠정'이라고 밝힌다. 순위에서 뺀 학교가 있으면 그 이유(확인 불가 등)를 말한다.
+4. 행의 조건·비고에 있는 내용 중 질문과 관련된 것(예외 대상 등)은 답에 포함한다. 행을 관리하려고 적은 메모(개정 전 값 미확보, 확인함 등)는 말하지 않는다.
+5. 조회 결과로 넘어온 행은 하나도 빼지 않고 모두 말한다. 학번·구간이 다르면 구분해서 말한다.
+6. 답변 마지막에 인용한 행의 출처(규정·조항·쪽)를 행에 적힌 그대로 한 줄로 적는다.
+7. 행에 없는 내용은 지어내지 말고 "확인 불가"라고 한다.
 
 출력 필드
 - 답변: 사용자에게 보여 줄 답변 ([1] 같은 행 번호 포함)
@@ -321,6 +340,30 @@ def cmd_answer(args):
     chat = Chat(client)
     out, tin_sum, tout_sum = [], 0, 0
     for r, vec, sq in zip(rows, q_vecs, search_q):
+        if args.calc:
+            cres, cwhy = criteria_calc.calc(r["질문"])
+            if cres is not None:  # 실험 11: 계산·비교 질문은 코드가 계산, LLM은 설명만
+                calc_text, rows_text, row_ids = criteria_calc.build_context(cres)
+                user_msg = "[계산 결과]" + chr(10) + calc_text + chr(10) + chr(10) + "[기준표 조회 결과]" + chr(10) + rows_text + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"]
+                ans, tin, tout = chat.json(MODEL, CALC_SYSTEM, user_msg, ANSWER_SCHEMA, "answer")
+                tin_sum += tin
+                tout_sum += tout
+                cited = [n for n in ans["인용"] if 1 <= n <= len(row_ids)]
+                out.append({
+                    "id": r["id"], "질문": r["질문"], "답변": ans["답변"],
+                    "인용": ";".join(map(str, cited)), "인용청크": ";".join(row_ids[n - 1] for n in cited),
+                    "검색청크": ";".join(row_ids), "검색거리": "",
+                    "검색근거표시": " | ".join(f"{criteria_lookup.BY_ID[i]['대학']} 기준표 {criteria_lookup.BY_ID[i]['항목']} {criteria_lookup.BY_ID[i]['대상']}" for i in row_ids),
+                    "적중후보": "", "혼입_대학": "0/0", "혼입_학번": "0/0", "혼입_합계": "0/0",
+                    "필터": "", "검색질문": "(criteria 계산)", "계산결과": calc_text.replace(chr(10), " / "),
+                    "모델": MODEL, "프롬프트버전": CALC_VERSION, "프롬프트해시": prompt_hash(CALC_SYSTEM),
+                    "k": "", "컬렉션": "criteria-calc", "chunks_sha256": file_sha256(ROOT / "data" / "criteria.csv"),
+                    "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
+                    "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
+                })
+                print(f"  {r['id']} 계산({cres['kind']}) 행 {row_ids} 값 {cres['values']} 인용 {cited}", flush=True)
+                continue
+            print(f"  {r['id']} 계산 안 함({cwhy})", flush=True)
         if args.lookup:
             result, why = criteria_lookup.lookup(r["질문"])
             if result is not None:  # 실험 8: 숫자 질문은 기준표 조회, LLM은 설명만
@@ -374,7 +417,10 @@ def cmd_answer(args):
     base = result_base(bool(args.limit), args.tag)
     RESULTS.mkdir(parents=True, exist_ok=True)
     path = base.with_suffix(".csv")
-    write_csv(path, out, list(out[0]))
+    if args.calc:  # 계산 문항에만 있는 열을 모든 행에 맞춘다
+        for o in out:
+            o.setdefault("계산결과", "")
+    write_csv(path, out, list(dict.fromkeys(k for o in out for k in o)))
     cost = tin_sum / 1e6 * PRICE_IN + tout_sum / 1e6 * PRICE_OUT
     emb_cost = emb_tokens / 1e6 * EMBED_PRICE
     memo = f"기본 RAG 개발용 {len(rows)}문항, k={K}, {version}" + (" (smoke)" if args.limit else "") + (f" [{args.tag}]" if args.tag else "")
@@ -571,6 +617,7 @@ def main():
     a.add_argument("--expand", action="store_true", help="검색용 질문에 동의어 덧붙임 (실험 3)")
     a.add_argument("--lookup", action="store_true", help="숫자 질문은 criteria 조회로 답변 (실험 8)")
     a.add_argument("--prompt", choices=["v1", "v2"], default="v1", help="RAG 답변 프롬프트 (v2 = 실험 9, 조회 경로 lookup-v1에는 영향 없음)")
+    a.add_argument("--calc", action="store_true", help="계산·비교 질문은 코드가 계산 (실험 11, 조회·RAG보다 먼저 시도)")
     a.add_argument("--lookup-prompt", choices=["v1", "v2"], default="v1", help="조회 경로 답변 프롬프트 (v2 = 실험 10, 기본 v1)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
