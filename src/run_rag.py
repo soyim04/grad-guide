@@ -112,6 +112,14 @@ LOOKUP_SYSTEM = """당신은 대전 지역 5개 대학(배재·충남·한남·�
 - 답변: 사용자에게 보여 줄 답변 ([1] 같은 행 번호 포함)
 - 인용: 답변에 실제로 쓴 행 번호 목록"""
 
+# 실험 10: 규칙 1~6은 lookup-v1 그대로(문자열 치환으로 보장), 규칙 7(넘어온 행 전부 말하기)만 추가
+LOOKUP_VERSION_V2 = "lookup-v2"
+LOOKUP_SYSTEM_V2 = LOOKUP_SYSTEM.replace(
+    "\n\n출력 필드",
+    "\n7. 조회 결과로 넘어온 행은 하나도 빼지 않고 모두 말한다. 행마다 [행 번호]를 붙인다. 학번·구간이 다른 행은 규칙 4대로 구분해서 말한다.\n\n출력 필드",
+    1)
+assert LOOKUP_SYSTEM_V2 != LOOKUP_SYSTEM
+
 JUDGE_SYSTEM = """너는 대학 졸업요건 안내 챗봇의 답변을 채점하는 채점자다. [문항]의 기준으로 [챗봇 답변]을 판정하고, [인용한 근거]가 답변을 뒷받침하는지도 본다.
 
 판정 규칙
@@ -291,6 +299,7 @@ def cmd_answer(args):
     if chunks_path == CHUNKS and sha != CHUNKS_SHA256:
         sys.exit(f"chunks.jsonl sha256이 기록과 다릅니다 ({sha}). 색인이 낡았을 수 있어 중단합니다.")
     system, version = (ANSWER_SYSTEM_V2, PROMPT_VERSION_V2) if args.prompt == "v2" else (ANSWER_SYSTEM, PROMPT_VERSION)
+    lsys, lver = (LOOKUP_SYSTEM_V2, LOOKUP_VERSION_V2) if args.lookup_prompt == "v2" else (LOOKUP_SYSTEM, LOOKUP_VERSION)
     rows = load_csv(DEV_CSV)
     if args.ids:
         want = args.ids.split(",")
@@ -316,7 +325,7 @@ def cmd_answer(args):
             result, why = criteria_lookup.lookup(r["질문"])
             if result is not None:  # 실험 8: 숫자 질문은 기준표 조회, LLM은 설명만
                 context, row_ids = criteria_lookup.build_context(result)
-                ans, tin, tout = chat.json(MODEL, LOOKUP_SYSTEM, "[기준표 조회 결과]" + chr(10) + context + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"], ANSWER_SCHEMA, "answer")
+                ans, tin, tout = chat.json(MODEL, lsys, "[기준표 조회 결과]" + chr(10) + context + chr(10) + chr(10) + "[질문]" + chr(10) + r["질문"], ANSWER_SCHEMA, "answer")
                 tin_sum += tin
                 tout_sum += tout
                 cited = [n for n in ans["인용"] if 1 <= n <= len(row_ids)]
@@ -327,7 +336,7 @@ def cmd_answer(args):
                     "검색근거표시": " | ".join(f"{criteria_lookup.BY_ID[i]['대학']} 기준표 {criteria_lookup.BY_ID[i]['항목']} {criteria_lookup.BY_ID[i]['대상']}" for i in row_ids),
                     "적중후보": "", "혼입_대학": "0/0", "혼입_학번": "0/0", "혼입_합계": "0/0",
                     "필터": "", "검색질문": "(criteria 조회)",
-                    "모델": MODEL, "프롬프트버전": LOOKUP_VERSION, "프롬프트해시": prompt_hash(LOOKUP_SYSTEM),
+                    "모델": MODEL, "프롬프트버전": lver, "프롬프트해시": prompt_hash(lsys),
                     "k": "", "컬렉션": "criteria-lookup", "chunks_sha256": file_sha256(ROOT / "data" / "criteria.csv"),
                     "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
                     "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
@@ -562,6 +571,7 @@ def main():
     a.add_argument("--expand", action="store_true", help="검색용 질문에 동의어 덧붙임 (실험 3)")
     a.add_argument("--lookup", action="store_true", help="숫자 질문은 criteria 조회로 답변 (실험 8)")
     a.add_argument("--prompt", choices=["v1", "v2"], default="v1", help="RAG 답변 프롬프트 (v2 = 실험 9, 조회 경로 lookup-v1에는 영향 없음)")
+    a.add_argument("--lookup-prompt", choices=["v1", "v2"], default="v1", help="조회 경로 답변 프롬프트 (v2 = 실험 10, 기본 v1)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")
