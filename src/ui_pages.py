@@ -422,13 +422,15 @@ def reference_lines(plan, rem):
 
 ACCESS_GUIDE = {"배재": "학교 포털 '졸업자가진단' → 이수현황 표의 '소계'를 넣으세요."}
 ACCESS_GUIDE_DEFAULT = "학교 포털의 졸업사정(졸업 자가진단) 메뉴에서 확인하세요."
+KIDS_GUIDE = {"배재": "영역별 학점은 학교 포털 '졸업자가진단'에서 볼 수 있어요. 모르면 비워 두세요."}
+KIDS_GUIDE_DEFAULT = "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요."
 
 
 def basis_rows(plan):
     """입력 없이 보여 줄 영역 기준: (영역 표 행, 세부 항목 줄). 영역별 계산을 지원하면 영역·세부 항목, 한남·한밭은 기준표의 영역별 기준 그대로"""
     if plan["tier"] in ("T1", "T2"):
         rows = [[a["name"], S.fmt_basis(a["row"])] for a in plan["areas"]]
-        kids = [f"{c['항목']} {S.fmt_basis(c)}" for a in plan["areas"] for c in a["children"]]
+        kids = [f"{CR.item_label(c['항목'])} {S.fmt_basis(c)}" for a in plan["areas"] for c in a["children"]]
         return rows, kids
     if plan["tier"] == "T3":
         return [[r["항목"] + (f" ({r['이수유형']})" if r["이수유형"] else ""), S.fmt_basis(r)] for r in plan["ref_rows"]], []
@@ -555,6 +557,8 @@ def page_remaining(sc):
     # ② 이수 학점을 알면(선택)
     with st.container(key="card_rem_main"):
         md('<div class="card-h">이수 학점을 알면 남은 학점을 계산해 드려요 (선택)</div>')
+        if keep().pop("scroll_to", None) == "card_rem_main":
+            scroll_script("card_rem_main")
         if transfer:  # 안내 상자 하나(인정학점 상한이 있으면 괄호로 함께)
             cap = f"(최대 {cap_row['값']}학점)" if cap_row else ""
             md(U.callout("info", f"편입 인정학점{cap}도 총 이수 학점에 포함해 넣어 주세요. 영역 구분은 학과에서 확인하세요."))
@@ -582,10 +586,11 @@ def page_remaining(sc):
             def _sync_kids():
                 keep()[f"kids_on|{ctx}"] = st.session_state[f"kids_on|{ctx}"]
             if st.checkbox("세부 항목까지 보기", key=f"kids_on|{ctx}", value=bool(keep().get(f"kids_on|{ctx}")), on_change=_sync_kids):
+                st.caption(KIDS_GUIDE.get(univ, KIDS_GUIDE_DEFAULT))
                 for a in plan["areas"]:
                     for r in a["children"]:
                         k = f"kid|{ctx}|{r['항목']}"
-                        num(f"{r['항목']} (기준 {S.fmt_value(r)})", k, k)
+                        num(f"{CR.item_label(r['항목'])} (기준 {S.fmt_value(r)})", k, k)
         rem = stt["rem"]
         if rem is not None and stt["any_area"]:
             with st.expander("영역별 결과 (참고)"):
@@ -596,7 +601,7 @@ def page_remaining(sc):
                     shown = [k for k in a["kids"] if k["done"] or k["remaining"]]
                     if any(k["done"] for k in a["kids"]):
                         st.markdown(f"**{a['name']} 세부 항목**")
-                        st.dataframe(pd.DataFrame([{"항목": k["name"], "기준": S.fmt_value(k["row"]), "이수": k["done"], "남은 학점": k["remaining"]} for k in shown]),
+                        st.dataframe(pd.DataFrame([{"항목": CR.item_label(k["name"]), "기준": S.fmt_value(k["row"]), "이수": k["done"], "남은 학점": k["remaining"]} for k in shown]),
                                      hide_index=True, width="stretch")
     lines = reference_lines(plan, stt["rem"])
     if lines:
@@ -818,12 +823,38 @@ def page_courses(sc):
 
 # ---------- 홈·규정 안내 ----------
 
+def go_calc():
+    """홈 ③: 내 졸업요건 페이지로 이동하고, 선택 영역(학점 계산)으로 스크롤하도록 표시해 둔다(스크롤은 가능할 때만)"""
+    keep()["scroll_to"] = "card_rem_main"
+    st.session_state["page"] = "remaining"
+
+
+def scroll_script(key):
+    """st.container(key=...) 위치로 부드럽게 스크롤(브라우저에서만 동작하는 보조 기능, 실패해도 페이지 이동은 그대로).
+    우리가 만든 고정 문자열만 st.iframe에 넣는다(사용자 입력은 넣지 않는다)."""
+    try:
+        st.iframe("<script>setTimeout(function(){var t=window.parent.document.querySelector('.st-key-" + key + "');"
+                  "if(t){t.scrollIntoView({behavior:'smooth',block:'start'});}},350);</script>", height=1)
+    except Exception:
+        pass
+
+
 def home_steps():
-    with st.container(key="card_steps"):
-        md('<div class="steps">'
-           '<div class="step"><b>① 내 정보 고르기</b><br>왼쪽에서 대학·학번·학과·입학 구분을 골라요.</div>'
-           '<div class="step"><b>② 졸업요건 보기</b><br>학점을 몰라도 졸업학점과 채워야 할 요건이 바로 보여요.</div>'
-           '<div class="step"><b>③ 학점을 알면</b><br>남은 학점과 이번 학기 개설 과목까지 이어 드려요.</div></div>')
+    """맨 위 3단계 흐름(상자 없이 한 줄, 좁은 화면에서는 세로). ① 안내 ② 졸업요건 보기 ③ 남은 학점 계산(선택)"""
+    with st.container(key="steps_row"):
+        c1, a1, c2, a2, c3 = st.columns([10, 1, 10, 1, 10], vertical_alignment="top")
+        with c1:
+            md('<div class="step-label">① 내 정보 고르기</div><div class="step-txt">왼쪽에서 내 정보를 골라요</div>')
+        with a1:
+            md('<div class="step-arrow">→</div>')
+        with c2:
+            md('<div class="step-label">② 졸업요건 보기</div>')
+            st.button("내 졸업요건 보기", key="step_req", on_click=goto, args=("remaining",), width="stretch")
+        with a2:
+            md('<div class="step-arrow">→</div>')
+        with c3:
+            md('<div class="step-label">③ 남은 학점 계산 (선택)</div>')
+            st.button("남은 학점 계산하기", key="step_calc", on_click=go_calc, width="stretch")
 
 
 def page_home(sc):

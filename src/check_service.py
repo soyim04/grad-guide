@@ -399,6 +399,18 @@ def cmd_logic():
     check("E19: 약어 툴팁 — 교필선·교선·전필에 풀이(title), '전공필수'·'교양필수' 같은 풀이된 말에는 안 붙음",
           'title="교양필수선택(영역을 골라 듣는 교양)">교필선</abbr>' in t_ and 'title="교양선택">교선</abbr>' in t_ and 'title="전공필수">전필</abbr>' in t_ and t_.count("<abbr") == 3 and "전공필수 ·" in t_
           and all(k in U_.ABBR_HELP for k in ("교필=교양필수", "교필선=", "교선=교양선택", "전필=전공필수", "전선=전공선택", "일선=일반선택")))
+    # 1-9d. E19b 표시 이름: 기준표 항목 코드는 그대로, 화면 이름은 개설 과목 영역 이름과 같은 표를 쓴다
+    names_ = set()
+    for u_ in S.BASE_DEPT:
+        for y_ in range(2022, 2027):
+            for a_ in S.area_plan(u_, S.BASE_DEPT[u_], y_)["areas"]:
+                names_ |= {a_["name"]} | {c_["항목"] for c_ in a_["children"]}
+    check("E19b: 5개 대학 × 2022~2026학번 모든 영역·세부 항목 이름이 화면 이름에서 '교양_'·'공유혁신_'·밑줄 없음", all("_" not in CR.item_label(n_) and not CR.item_label(n_).startswith("교양_") for n_ in names_)
+          and len(names_) > 20, str(sorted(n_ for n_ in names_ if "_" in CR.item_label(n_))))
+    check("E19b: 표시 이름 대응(개설 과목 영역 이름과 같은 표) — 글로벌-언어·글로벌-세계시민·글쓰기와토론·미래와기술·균형학문·비전설계·교양필수, 표에 없는 접두도 풀어서(전문기초·공유혁신 전공필수), 기준표 코드는 그대로",
+          [CR.item_label(k_) for k_ in ("교양_글로벌언어", "교양_글로벌세계시민", "교양_글쓰기와토론", "교양_미래와기술", "교양_균형학문", "교양_비전설계", "교양필수")] == ["글로벌-언어", "글로벌-세계시민", "글쓰기와토론", "미래와기술", "균형학문", "비전설계", "교양필수"]
+          and CR.item_label("교양_전문기초") == "전문기초" and CR.item_label("공유혁신_전공필수") == "공유혁신 전공필수" and CR.item_label("전공") == "전공" and "교양_글로벌언어" in names_
+          and all(CR.ITEM_LABEL[k_] == CR.AREA_LABEL[k_] for k_ in CR.ITEM_LABEL))
     # 1-9. 배재 개설 과목(가공본이 있을 때만): 파일 659분반, 영역 분류, 공유혁신 분리, 요일 파싱, 제한 배지
     if not CR.available():
         skip("개설 과목 로직 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
@@ -766,6 +778,37 @@ def cmd_app():
             can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
             ok2 = all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and "근거 행" in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 홈 카드와 페이지 모두 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok and ok2, hh[:60])
+        # ---- E19b 홈 3단계 버튼 · 세부 항목 표시 이름 ----
+        at = pick(run(), "배재", 2023, "신입")
+        check("화면: [E19b] 홈 3단계는 상자 없이 한 줄(바깥 .steps 상자 없음), ①은 안내 글, ②③은 버튼", 'class="steps"' not in html(at) and "step_req" in [b.key for b in at.button] and "step_calc" in [b.key for b in at.button]
+              and "내 졸업요건 보기" in [b.label for b in at.button] and "남은 학점 계산하기" in [b.label for b in at.button] and not [b for b in at.button if "→" in b.label])
+        at.button(key="step_req").click().run()
+        check("화면: [E19b] 홈 ② 버튼 → 내 졸업요건 페이지(① 졸업요건이 보임), 스크롤 표시는 남지 않음", "졸업하려면 이것들을 채워야 해요" in html(at) and "scroll_to" not in at.session_state["keep"] and not at.exception)
+        at = pick(run(), "배재", 2023, "신입")
+        at.button(key="step_calc").click().run()
+        check("화면: [E19b] 홈 ③ 버튼 → 내 졸업요건 페이지의 ② 선택 영역(스크롤 표시는 쓰고 지움, 페이지 이동은 그대로)", "이수 학점을 알면 남은 학점을 계산해 드려요 (선택)" in html(at) and "scroll_to" not in at.session_state["keep"] and not at.exception
+              and len(at.get("iframe")) == 1 and "card_rem_main" in str(at.get("iframe")[0].proto) and not at.get("iframe")[0].proto.srcdoc.count("http"))
+        at = nav(at, "home")
+        check("화면: [E19b] 스크롤 보조(iframe)는 홈 ③ 버튼으로 온 때만 한 번 — 홈과 다음 렌더에는 없다", not at.get("iframe") and not nav(at, "remaining").get("iframe"))
+        KIDS_WANT = {"배재": "영역별 학점은 학교 포털 '졸업자가진단'에서 볼 수 있어요. 모르면 비워 두세요.",
+                     "충남": "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요.", "목원": "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요."}
+        for u_, y_ in (("배재", 2023), ("배재", 2025), ("충남", 2024), ("목원", 2023)):
+            at = nav(pick(run(), u_, y_, "신입"), "remaining")
+            cx_ = f"{u_}|{y_}|{S.BASE_DEPT[u_]}"
+            at.number_input(key=f"tot|{cx_}").set_value(100).run()
+            at.number_input(key=f"done|{cx_}|교양").set_value(10).run()
+            at.checkbox(key=f"kids_on|{cx_}").check().run()
+            kid_keys = [n.key for n in at.number_input if n.key.startswith(f"kid|{cx_}|")]
+            at.number_input(key=kid_keys[0]).set_value(5).run()
+            labels_ = " ".join(n.label for n in at.number_input)
+            dfs_ = " ".join(str(d.value.to_dict()) for d in at.dataframe)
+            check(f"화면: [E19b] {u_} {y_} 세부 항목 칸·결과 표·세부 항목 보기에 '교양_'이 안 남고, 칸 위 안내 한 줄",
+                  "교양_" not in labels_ and "교양_" not in dfs_ and "교양_" not in html(at) and len(kid_keys) >= 3
+                  and KIDS_WANT[u_] in texts(at.caption) and not at.exception, f"{labels_[:120]}")
+        at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
+        at.checkbox(key="kids_on|배재|2023|IT경영정보학과").check().run()
+        lab_ = " ".join(n.label for n in at.number_input)
+        check("화면: [E19b] 배재 2023 세부 항목 이름이 개설 과목 화면과 같다(글로벌-언어·글로벌-세계시민·글쓰기와토론·미래와기술·균형학문·비전설계)", all(k_ in lab_ for k_ in ("글로벌-언어", "글로벌-세계시민", "글쓰기와토론", "미래와기술", "균형학문", "비전설계")))
         # ---- E19 내 졸업요건: 학점을 몰라도 쓸 수 있게 ----
         def keys_of(at_):
             return [b.key for b in at_.button]
@@ -789,7 +832,7 @@ def cmd_app():
         at = nav(pick(run(), "홈", 2023, "신입") if False else pick(run(), "배재", 2023, "신입"), "home")
         h = html(at)
         check("화면: [E19] 홈 맨 위 3단계 안내, 홈 카드는 '내 졸업요건' 요약(졸업학점·영역 기준)이 먼저이고 학점 계산은 선택 접기",
-              "① 내 정보 고르기" in h and "② 졸업요건 보기" in h and "③ 학점을 알면" in h and h.find("내 졸업요건") >= 0 and "졸업학점 <b>" in h
+              "① 내 정보 고르기" in h and "② 졸업요건 보기" in h and "③ 남은 학점 계산 (선택)" in h and "왼쪽에서 내 정보를 골라요" in h and h.count('class="step-arrow"') == 2 and h.find("내 졸업요건") >= 0 and "졸업학점 <b>" in h
               and "36학점 이상" in h and big(at) is None and [x.label for x in at.expander if "선택" in x.label])
         if not CR.available():
             skip("E19 개설 과목 연결 화면 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")

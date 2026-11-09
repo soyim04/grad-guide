@@ -121,9 +121,11 @@ details.crs summary{cursor:pointer;line-height:1.7;}
 .crs-group{font-weight:800;color:var(--pt);margin:1rem 0 .2rem;font-size:.98rem;}
 /* 약어 툴팁 · 홈 3단계 */
 abbr.abbr{text-decoration:underline dotted;text-underline-offset:3px;cursor:help;}
-.steps{display:flex;gap:.8rem;flex-wrap:wrap;}
-.step{flex:1;min-width:210px;background:var(--soft2);border:1px solid var(--line);border-radius:12px;padding:.7rem .9rem;font-size:.95rem;line-height:1.55;}
-.step b{color:var(--pt);}
+.step-label{font-weight:800;color:var(--pt);font-size:.95rem;margin-bottom:.25rem;}
+.step-txt{font-size:.95rem;line-height:1.5;color:var(--ink);padding:.45rem 0;}
+.step-arrow{font-size:1.4rem;line-height:1;color:var(--pt);text-align:center;}
+[class*="st-key-steps_row"] [data-testid="stColumn"]:has(.step-arrow){align-self:center;}  /* 화살표는 단계 제목 줄과 버튼 사이(블록 가운데)에 */
+@media (max-width:640px){[class*="st-key-steps_row"] [data-testid="stColumn"]:has(.step-arrow){display:none;}}
 /* 입학 구분 라디오를 조각 모양으로 */
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>
