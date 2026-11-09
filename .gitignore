@@ -230,3 +230,6 @@ eval/results/raw/
 
 # Claude Code 개인 설정
 .claude/settings.local.json
+
+# UI 시안(실제 학적 값이 들어 있음)
+docs/ui_mockup_D.png
