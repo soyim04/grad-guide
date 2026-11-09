@@ -47,7 +47,7 @@ section[data-testid="stSidebar"] [data-testid="stAlert"]{font-size:.9rem;}
 
 /* 카드 */
 [class*="st-key-card_"]{background:#fff;border:1px solid var(--line);border-radius:16px;padding:1.3rem 1.3rem 1.1rem;box-shadow:0 2px 12px rgba(91,71,199,.06);}
-[class*="st-key-card_courses"]{background:transparent;border:1.5px dashed #CFC8EC;box-shadow:none;}
+.st-key-card_courses_soon{background:transparent;border:1.5px dashed #CFC8EC;box-shadow:none;}
 .card-h{display:flex;justify-content:space-between;align-items:center;font-size:1.1rem;font-weight:800;margin-bottom:.5rem;}
 .card-sub{font-size:.95rem;color:var(--mute);margin-bottom:.4rem;}
 .bignum{font-size:3rem;font-weight:800;color:var(--pt);line-height:1.1;margin:.2rem 0 .1rem;}
@@ -112,6 +112,12 @@ table.tbl td.tot{font-weight:800;color:var(--pt);}
 details.det{margin-top:.25rem;font-size:.85rem;color:var(--mute);}
 details.det summary{cursor:pointer;color:var(--pt);font-weight:600;}
 details.det div{margin:.15rem 0 0 .2rem;line-height:1.5;}
+/* 개설 과목 목록 */
+details.crs{border:1px solid var(--line);border-radius:12px;background:#fff;margin:.4rem 0;padding:.55rem .85rem;}
+details.crs summary{cursor:pointer;line-height:1.7;}
+.crs-sec{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem;font-size:.93rem;line-height:1.6;}
+.crs-memo{font-size:.8rem;color:var(--mute);line-height:1.5;margin-top:.1rem;word-break:keep-all;}
+.crs-group{font-weight:800;color:var(--pt);margin:1rem 0 .2rem;font-size:.98rem;}
 /* 입학 구분 라디오를 조각 모양으로 */
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>

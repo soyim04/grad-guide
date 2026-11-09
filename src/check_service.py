@@ -24,6 +24,7 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
+import courses as CR  # noqa: E402
 import criteria_calc  # noqa: E402
 import criteria_lookup as L  # noqa: E402
 import engine  # noqa: E402
@@ -33,6 +34,12 @@ import service_calc as S  # noqa: E402
 
 BASELINE = ROOT / "eval" / "pipeline_snapshot.json"
 RESULTS = []
+SKIPS = []  # 자료 파일이 없어 건너뛴 점검(요약에 개수를 따로 표시, 8단계 동결 전에는 0개여야 한다)
+
+
+def skip(msg):
+    SKIPS.append(msg)
+    print("SKIP " + msg)
 
 
 def check(name, ok, detail=""):
@@ -353,6 +360,44 @@ def cmd_logic():
     check("본문 없이 출처 줄만 있으면 통째로 본문", body == "출처: [1] 학칙" and tail == "")
 
 
+    # 1-9. 배재 개설 과목(가공본이 있을 때만): 파일 659분반, 영역 분류, 공유혁신 분리, 요일 파싱, 제한 배지
+    if not CR.available():
+        skip("개설 과목 로직 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
+    else:
+        secs = CR.load()
+
+        def cnt(key):
+            ss = [x for x in secs if key(x)]
+            return len({x["과목코드"] for x in ss}), len(ss)
+        check("개설 과목: 분반 659, 파일별 분반 16·111·119·48·153·212", len(secs) == 659 and [cnt(lambda x, f=f: x["파일"] == f)[1] for f in ("IT경영정보", "공유혁신", "공유대학가상", "교필", "교필선", "교선")] == [16, 111, 119, 48, 153, 212])
+        want = {"전공": (16, 16), "교양필수": (5, 48), "교양_글로벌언어": (8, 41), "교양_글로벌세계시민": (18, 18), "교양_글쓰기와토론": (6, 14), "교양_미래와기술": (11, 20),
+                "교양_균형학문": (55, 58), "교선": (87, 212), "교양_영역미표시": (2, 2), "타학과전공": (84, 119)}
+        got = {k: cnt(lambda x, k=k: x["영역"] == k) for k in want}
+        check("개설 과목: 영역별 과목·분반 수(전공 16/16, 교필 5/48, 글로벌언어 8/41, 세계시민 18/18, 글쓰기 6/14, 미래기술 11/20, 균형학문 55/58, 교선 87/212, 영역미표시 2/2, 가상 84/119)", got == want, str(got))
+        inv = {k: cnt(lambda x, k=k: x["영역"] == k) for k in ("공유혁신_전공융합설계", "공유혁신_비전설계", "공유혁신_혁신교육과미래설계", "공유혁신_미분류")}
+        check("개설 과목: 공유혁신 분리 — 전공융합설계 32/67, 비전설계 22/22(진로·취창업 15 + 자기설계 7), 혁신교육과미래설계 1/10, 미분류 11/12, 합 분반 111",
+              inv == {"공유혁신_전공융합설계": (32, 67), "공유혁신_비전설계": (22, 22), "공유혁신_혁신교육과미래설계": (1, 10), "공유혁신_미분류": (11, 12)}
+              and cnt(lambda x, **k: x["영역"] == "공유혁신_비전설계" and x["하위"] == "진로·취창업") == (15, 15) and cnt(lambda x: x["영역"] == "공유혁신_비전설계" and x["하위"] == "자기설계") == (7, 7), str(inv))
+        check("개설 과목: 학번별 영역 — 2022~2024는 교양_비전설계(공유혁신 없음), 2025~는 공유혁신(비전설계 없음), 범위 밖은 빈 목록",
+              "교양_비전설계" in CR.view_areas(2023) and "공유혁신" not in CR.view_areas(2023) and "공유혁신" in CR.view_areas(2026) and "교양_비전설계" not in CR.view_areas(2026) and CR.view_areas(engine.OUT_OF_RANGE) == [] and CR.view_areas(None) == [])
+        check("개설 과목: 2025~ 공유혁신 영역 = 전공융합설계+비전설계+혁신교육과미래설계 99분반(미분류 12분반은 제외, 기타 영역에서 따로 보임)",
+              len(CR.sections_in(secs, 2025, "공유혁신")) == 99 and len(CR.sections_in(secs, 2025, "공유혁신_기타")) == 12 and len(CR.sections_in(secs, 2023, "교양_비전설계")) == 22)
+        kinds_ = {}
+        for x in secs:
+            kinds_[CR.time_kind(x["시간"])[0]] = kinds_.get(CR.time_kind(x["시간"])[0], 0) + 1
+        check("개설 과목: 시간 파싱 요일 510·시간 미정 149('(?)')·실패 0", kinds_ == {"요일": 510, "미정": 149}, str(kinds_))
+        check("개설 과목: 시간 문자열 예(월(5, 6)·화(C), 목(D)·(?)·빈 칸·여러 강의실)", CR.parse_days("A117 [월(5, 6)]") == ["월"] and CR.parse_days("MC208 [화(C), 목(D)]") == ["화", "목"]
+              and CR.time_kind("(?)")[0] == "미정" and CR.time_kind("")[0] == "미정" and CR.parse_days("K301 [목(1, 2, 3), 금(1, 2, 3)]") == ["목", "금"] and CR.time_kind("미정 문자열")[0] == "실패")
+        pos = ["외국인 유학생 전용", "2,3,4학년 수강제한/대학설계", "조경학과만 수강 가능", "타전공 학생만 수강 가능", "1학년 외 수강제한", "평생교육융합학부 전용 / 타학과 수강 금지", "수강 불가"]
+        neg = ["전공융합설계-인문사회계열(일본학과)/타전공 수강 가능", "1~2학년 수강 교과목, 잔여 여석 발생 시 3학년 수강 가능", "(AI와SW영역) 자율전공학부, 운동재활복지학과 수강/042-520-5619", "조경학과A, 재수강자 신청가능 분반/042-520-5619", "", "수강 인원 0명으로 운영"]
+        check("개설 과목: 강한 제한 문구 판정(전용·수강제한·○○만 수강·외 수강·수강 금지는 배지, '타전공 수강 가능'·'3학년 수강 가능'·학과 나열·빈 비고는 배지 없음)",
+              all(CR.is_strong_limit(t) for t in pos) and not any(CR.is_strong_limit(t) for t in neg))
+        check("개설 과목: 배지 분반 225/659(34%)(파일별 IT경영 0·공유혁신 32·가상 65·교필 9·교필선 88·교선 31)", sum(1 for x in secs if x["제한"]) == 225 and [sum(1 for x in secs if x["제한"] and x["파일"] == f) for f in ("IT경영정보", "공유혁신", "공유대학가상", "교필", "교필선", "교선")] == [0, 32, 65, 9, 88, 31])
+        mon = [c for c in CR.group_courses(CR.sections_in(secs, 2023, "교선")) if CR.filter_sections(c, ["월"])]
+        check("개설 과목: 요일 필터 — 월 선택 시 월요일 분반만, '시간 미정'은 따로 선택해야 나옴", all("월" in x["요일"] for c in mon for x in CR.filter_sections(c, ["월"]))
+              and all(not x["요일"] for c in CR.group_courses(CR.sections_in(secs, 2023, "교선")) for x in CR.filter_sections(c, ["시간 미정"])))
+
+
 def cmd_citations():
     """답 속 [n]과 카드 번호: 카드에는 모델이 본 원래 번호를 붙이고(다시 매기지 않음), 답 속 [n]은 모두 카드 번호 중에 있어야 한다.
     eval/results의 실제 답변(개발용 문항, 조회·계산·RAG 경로) 전체와 단위 사례로 본다. API 비용 0."""
@@ -465,7 +510,7 @@ def cmd_app():
         at = run()
         labels = [b.label for b in at.sidebar.button]
         check("화면: 첫 화면 예외 없음·홈·메뉴 5개(개발자 메뉴 없음)", not at.exception and len(labels) == 5 and labels[0] == "홈" and "학사 규정 안내" in labels
-              and "남은 학점 계산" in labels and "학사 선택 비교" in labels and labels[4].startswith("이번 학기 개설 과목") and "준비 중" in labels[4], str(labels))
+              and "남은 학점 계산" in labels and "학사 선택 비교" in labels and labels[4] == "이번 학기 개설 과목", str(labels))
         import re as _re
         import ui_style
         hide_rules = [r for r in _re.findall(r"([^{}]+)\{([^{}]*)\}", _re.sub(r"/\*.*?\*/", "", ui_style.CSS, flags=_re.S))
@@ -535,7 +580,7 @@ def cmd_app():
         rt = texts(ref.markdown) if ref else ""
         check("화면: 신입은 영역별 합 49, '참고' 접기에 표 합계 불일치(34↔36)와 영역 미지정 학점 28을 쉬운 말로", area_sum(at_n) == "49" and "34학점" in rt and "36학점" in rt and "28학점" in rt and "학생이 할 일은 없어요" in rt, rt[:120])
         check("화면: 편입이면 영역별 확인은 참고용 안내", "참고용이에요" in texts(at.caption))
-        check("화면: 개설 과목 자리 표시(준비 중)", "이번 학기 개설 과목" in html(at) and "준비 중" in html(at))
+        check("화면: 남은 학점 화면의 개설 과목 카드는 요약+이동 버튼(목록은 개설 과목 페이지에만)", "이번 학기 개설 과목" in html(at) and "개설 과목 보기" in [b.label for b in at.button] and 'class="crs-sec"' not in html(at))
         nav(at, "home")
         nav(at, "remaining")
         check("화면: 페이지를 옮겼다 와도 영역 입력(교양 5·전공 48)과 총 이수 학점(125) 유지",
@@ -665,11 +710,41 @@ def cmd_app():
             can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
             ok2 = all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and "근거 행" in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 홈 카드와 페이지 모두 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok and ok2, hh[:60])
-        # 개설 과목 자리
-        at = nav(pick(run(), "배재", 2023, "신입"), "courses")
-        check("화면: 배재 개설 과목은 준비 중 카드, 임의 과목 없음", "준비 중" in html(at) and "지원하지 않아요" not in html(at) and not at.dataframe)
+        # 개설 과목 페이지(배재대 2026-2, 가공본이 있을 때만)
+        if not CR.available():
+            skip("개설 과목 화면 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
+        else:
+            at = nav(pick(run(), "배재", 2023, "신입"), "courses")
+            h = html(at)
+            opts = list(at.selectbox(key="crs_area_w").options)
+            check("화면: [개설 과목] 배재 2023 영역에 비전설계 있고 공유혁신 없음, 기본은 전공 16과목(IT경영정보), 자료 기준일 문구, 표(dataframe) 없음",
+                  "비전설계" in opts and "공유혁신" not in opts and "전공" in opts[0] and "16과목 · 16분반" in h and "11월 9일 내려받음" in h and "수강 가능 여부는 판단하지 않아요" in h and not at.dataframe and not at.exception, str(opts)[:120])
+            at.selectbox(key="crs_area_w").set_value("교선").run()
+            h = html(at)
+            check("화면: [개설 과목] 교선은 '영역 정보가 없어요' 한 줄 + 87과목·212분반, 강한 제한 문구가 있는 분반에만 배지", "영역 정보가 없어요" in texts(at.caption) and "87과목 · 212분반" in h and h.count('class="badge b-warn">수강 제한 있음') >= 31, f"{texts(at.caption)[:2]} {'87과목 · 212분반' in h} {h.count(chr(34)+'>수강 제한 있음')}")
+            at.multiselect(key="crs_days_w").set_value(["금"]).run()
+            h = html(at)
+            nfri = sum(1 for x in CR.load() if x["영역"] == "교선" and "금" in x["요일"])
+            check(f"화면: [개설 과목] 요일 금 필터 → 교선 금요일 분반 {nfri}개만(자료 직접 세기와 일치)", f"{nfri}분반" in h and "요일 금" in h and not at.exception and "시간이 정해지지 않은 분반 135개는" in texts(at.caption), h[h.find("card-sub"):][:120] if "card-sub" in h else "")
+            at.multiselect(key="crs_days_w").set_value([]).run()
+            first = CR.group_courses(CR.sections_in(CR.load(), 2023, "교선"))[0]
+            at.multiselect(key="crs_done_w").set_value([first["code"]]).run()
+            h = html(at)
+            check("화면: [개설 과목] 이수한 과목 체크 → 목록에서 빠지고 '이수 제외 1과목', 값은 session_state(keep)에만", f'<b>{first["name"]}</b>' not in h and "86과목" in h and "이수 제외 1과목" in h and at.session_state["keep"].get("crs_done") == [first["code"]])
+            at.selectbox(key="crs_area_w").set_value("교양_비전설계").run()
+            h = html(at)
+            check("화면: [개설 과목] 2023 비전설계 영역: 22과목(진로·취창업 15 + 자기설계 7), 2025용 공유혁신 문구 없음", "22과목 · 22분반" in h and "진로·취창업 · 15과목" in h and "자기설계 · 7과목" in h and "BJ-016" in h)
+            at = nav(pick(run(), "배재", 2025, "신입"), "courses")
+            opts = list(at.selectbox(key="crs_area_w").options)
+            check("화면: [개설 과목] 배재 2025 영역에 공유혁신 있고 비전설계(교양) 없음", "공유혁신" in opts and "교양_비전설계" not in opts)
+            at.selectbox(key="crs_area_w").set_value("공유혁신").run()
+            h = html(at)
+            check("화면: [개설 과목] 공유혁신 = 전공융합설계 32 + 비전설계 22 + 혁신교육과미래설계 1 = 55과목·99분반, BJ-032·033·034·035 안내, 전공탐색은 자료 없음 명시",
+                  "55과목 · 99분반" in h and "전공융합설계 · 32과목" in h and "비전설계 · 진로·취창업 · 15과목" in h and "혁신교육과미래설계 (전필, P/F) · 1과목" in h and all(f"BJ-0{n}" in texts(at.caption) for n in (32, 33, 34, 35)) and "찾지 못했어요" in texts(at.caption), f"{[k for k in ('55과목 · 99분반', '전공융합설계 · 32과목', '비전설계 · 진로·취창업 · 15과목', '혁신교육과미래설계 (전필, P/F) · 1과목') if k not in h]} {texts(at.caption)[:2]}")
+            at = nav(pick(run(), "배재", 2023, "편입"), "courses")
+            check("화면: [개설 과목] 편입이면 필수과목 면제 안내 한 줄(과목별 면제 배지 없음)", "BJ-060" in html(at) and "면제 가능" not in html(at))
         at = nav(pick(run(), "목원", 2023, "신입"), "courses")
-        check("화면: 배재 외 대학 개설 과목은 '지원하지 않아요' 안내", "개설 과목 안내를 아직 지원하지 않아요" in html(at) and not at.exception)
+        check("화면: 배재 외 대학 개설 과목은 '지원하지 않아요' 안내(목록·버튼 없음)", "개설 과목 안내를 아직 지원하지 않아요" in html(at) and 'class="crs-sec"' not in html(at) and not at.exception)
         # 규정 안내: 홈 카드에서 질문 → 근거 카드 번호·배지, 학생 화면에 비용·응답 시간 없음
         calls.clear()
         at = pick(run(), "한남", 2023, "신입")
@@ -755,7 +830,7 @@ def main():
         cmd_app()
     bad = [n for n, ok, _ in RESULTS if not ok]
     if RESULTS:
-        print(f"\n{len(RESULTS) - len(bad)}/{len(RESULTS)} 통과" + (f", 실패 {bad}" if bad else ""))
+        print(f"\n{len(RESULTS) - len(bad)}/{len(RESULTS)} 통과" + (f", 실패 {bad}" if bad else "") + f" · SKIP {len(SKIPS)}개" + (f" {SKIPS}" if SKIPS else ""))
     sys.exit(1 if bad else 0)
 
 

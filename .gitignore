@@ -233,3 +233,6 @@ eval/results/raw/
 
 # UI 시안(실제 학적 값이 들어 있음)
 docs/ui_mockup_D.png
+
+# 개설 과목 가공본(원본 엑셀은 data/raw/ 로 이미 제외, 가공본도 커밋하지 않음)
+data/courses_baejae_*.json

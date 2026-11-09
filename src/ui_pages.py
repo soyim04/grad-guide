@@ -13,6 +13,7 @@ import pandas as pd
 import streamlit as st
 
 import engine
+import courses as CR
 import service_calc as S
 import ui_style as U
 from service_log import DB_PATH, LogDB
@@ -23,7 +24,7 @@ YEAR_CHOICES = [*S.YEARS, "모름", engine.OUT_OF_RANGE]
 LONG_ANSWER = 300  # 이 글자 수를 넘으면 첫 문단만 먼저 보여 주고 나머지는 접는다
 EXAMPLES = ["졸업하려면 총 몇 학점이 필요해?", "부전공은 몇 학점 이수해야 해?", "재수강은 어떻게 하나요?", "부전공과 복수전공 중 어느 쪽이 전공학점이 적어?"]
 PAGES = [("home", "홈", ":material/home:"), ("ask", "학사 규정 안내", ":material/forum:"), ("remaining", "남은 학점 계산", ":material/calculate:"),
-         ("compare", "학사 선택 비교", ":material/compare_arrows:"), ("courses", "이번 학기 개설 과목 · 준비 중", ":material/menu_book:")]
+         ("compare", "학사 선택 비교", ":material/compare_arrows:"), ("courses", "이번 학기 개설 과목", ":material/menu_book:")]
 DEV_PAGE = ("dev", "개발자 · 로그", ":material/terminal:")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
 KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음"), "안내": ("info", "안내")}
@@ -589,19 +590,136 @@ def page_compare(sc):
 
 # ---------- 이번 학기 개설 과목(자리만) ----------
 
-def card_courses(sc):
-    with st.container(key="card_courses"):
-        if sc["univ"] == "배재":
-            md(f'<div class="card-h">이번 학기 개설 과목 {U.badge("soon", "준비 중")}</div>')
-            st.caption("남은 학점에 맞는 개설 과목을 여기에 보여 줄 예정이에요(배재대 먼저).")
-        else:
+def card_courses(sc, full=False):
+    """배재대 개설 과목 안내. full=False(홈·남은 학점)는 요약+이동 버튼, full=True(개설 과목 페이지)는 영역·요일 필터와 목록"""
+    if sc["univ"] != "배재":
+        with st.container(key="card_courses_soon"):
             md(f'<div class="card-h">이번 학기 개설 과목 {U.badge("soon", "준비 중")}</div>')
             st.caption(f"{sc['univ']}대는 개설 과목 안내를 아직 지원하지 않아요. 배재대부터 준비하고 있어요.")
+        return
+    if not CR.available():
+        with st.container(key="card_courses_soon"):
+            md('<div class="card-h">이번 학기 개설 과목</div>')
+            st.caption("개설 과목 자료 파일(data/courses_baejae_2026-2.json)이 없어요. src/build_courses.py로 만들어 주세요.")
+        return
+    if not full:
+        with st.container(key="card_courses"):
+            md('<div class="card-h">이번 학기 개설 과목</div>')
+            st.caption("배재대 2026-2학기 교양·전공 개설 과목을 영역과 요일로 찾아볼 수 있어요.")
+            st.button("개설 과목 보기", key="to_courses", on_click=goto, args=("courses",), width="stretch")
+        return
+    show_courses(sc)
+
+
+def _kept_widget(kind, label, kkey, wkey, **kw):
+    """페이지를 옮겨도 값이 남는 multiselect/checkbox(session_state 메모리만, 저장 안 함)"""
+    def _sync():
+        keep()[kkey] = st.session_state[wkey]
+    if kind == "multi":
+        return st.multiselect(label, default=keep().get(kkey, []), key=wkey, on_change=_sync, **kw)
+    return st.checkbox(label, value=keep().get(kkey, False), key=wkey, on_change=_sync, **kw)
+
+
+def course_html(c, days):
+    """과목 하나(분반 목록은 접기). 강한 제한 문구가 있는 분반 수는 배지로, 비고 원문은 모두 작은 글씨로 보여 준다"""
+    secs = CR.filter_sections(c, days)
+    nlim = CR.remaining_count(secs)
+    head = f'<b>{U.esc(c["name"])}</b> · {U.esc(c["credit"])}학점' + (f' · {U.esc(c["kind"])}' if c["kind"] in ("전필", "전선") else "") + f' · 분반 {len(secs)}개'
+    if nlim:
+        head += " " + U.badge("warn", "수강 제한 있음" if nlim == len(secs) else f"수강 제한 있음 {nlim}개")
+    rows = ""
+    for s in secs:
+        t = U.esc(s["시간"]) if s["요일"] else "시간 미정"
+        cap = f'수강 {U.esc(s["수강인원"])}명 / 정원 {U.esc(s["인원제한"])}명' if s["인원제한"] else f'수강 {U.esc(s["수강인원"])}명'
+        lim = " " + U.badge("warn", "수강 제한 있음") if s["제한"] else ""
+        memo = f'<div class="crs-memo">비고: {U.esc(s["비고"])}</div>' if s["비고"] else ""
+        rows += f'<div class="crs-sec"><b>{U.esc(s["분반"])}분반</b> · {U.esc(s["담당교수"] or "교수 미정")} · {t} · {cap}{lim}{memo}</div>'
+    return f'<details class="crs"><summary>{head}</summary>{rows}</details>'
+
+
+def subgroup_label(sec, view):
+    if view == "공유혁신":
+        part = sec["영역"].split("_", 1)[1]
+        return {"혁신교육과미래설계": "혁신교육과미래설계 (전필, P/F)", "전공융합설계": "전공융합설계", "비전설계": "비전설계 · " + sec["하위"]}[part]
+    if view == "전공":
+        return {"전필": "전공필수", "전선": "전공선택"}.get(sec["하위"], sec["하위"])
+    return sec["하위"]
+
+
+COURSE_NOTES = {
+    "교선": "교선은 영역 정보가 없어요. 교선 전체 목록이에요.",
+    "교양_비전설계": "비전설계 영역에서 1과목(3학점)을 이수해요(기준표 BJ-016).",
+    "공유혁신": "공유혁신은 전공융합설계 9학점 이상(BJ-034), 비전설계(진로·취창업) 1과목 3학점(BJ-035), 혁신교육과미래설계 P/F 필수(BJ-032)예요. "
+              "자기설계 영역 과목이 비전설계 3학점에 들어가는지는 학과에 확인하세요. 전공탐색(0.5학점×2, BJ-033)은 개설 자료에서 과목을 찾지 못했어요.",
+    "공유혁신_기타": "AI융합전공 공통·마이크로디그리 편성 과목이에요. 어느 졸업 영역에 들어가는지는 자료에 없어요.",
+    "교양_영역미표시": "교필선인데 비고에 영역 표시가 없는 과목이에요.",
+    "타학과전공": "다른 학과 학생 전용이 많아요. 비고를 꼭 확인하세요.",
+    "교양필수": "AI와SW 영역 등은 학과별로 분반이 나뉘어요. 비고의 해당 학과를 확인하세요.",
+}
+
+
+def show_courses(sc):
+    secs_all = CR.load()
+    year = sc["year"]
+    if not isinstance(year, int) or not CR.view_areas(year):
+        md(U.callout("info", "왼쪽에서 2022~2026학번을 골라 주세요. 학번마다 영역이 달라요."))
+        return
+    with st.container(key="card_courses"):
+        md('<div class="card-h">이번 학기 개설 과목 (배재대)</div>')
+        is_base = sc["dept"] == S.BASE_DEPT["배재"]
+        views = [v for v in CR.view_areas(year) if v != "전공" or is_base]
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            if _kept_widget("check", "다른 학과 전공(공유대학 가상) 과목도 보기", "crs_virtual", "crs_virtual_w"):
+                views = views + ["타학과전공"]
+            kept = keep().get("crs_area")
+            view = st.selectbox("영역", views, index=views.index(kept) if kept in views else 0, format_func=lambda v: CR.AREA_LABEL[v], key="crs_area_w",
+                                on_change=lambda: keep().__setitem__("crs_area", st.session_state["crs_area_w"]))
+        with c2:
+            days = _kept_widget("multi", "요일 (고르지 않으면 전체)", "crs_days", "crs_days_w", options=list(CR.DAYS[:6]) + ["시간 미정"])
+        if not is_base:
+            st.caption("전공 과목은 IT경영정보학과만 지원해요. 교양 영역은 모든 학과에 같이 보여 드려요.")
+        if sc["entry"] == "편입":
+            md(U.callout("info", "편입생은 편입 전 학년의 교양필수·전공필수가 면제될 수 있어요(기준표 BJ-060). 해당 여부는 학과에서 확인하세요."))
+        pool = CR.sections_in(secs_all, year, view)
+        names = {s["과목코드"]: s["과목명"] for s in pool}
+        if pool:
+            opts = sorted(names, key=lambda k: names[k])
+
+            def _sync_done():  # 다른 영역에서 체크한 과목은 그대로 두고 이 영역 선택분만 갈아 끼운다
+                keep()["crs_done"] = [c for c in keep().get("crs_done", []) if c not in names] + list(st.session_state["crs_done_w"])
+            st.multiselect("이미 이수한 과목(목록에서 뺄게요)", options=opts, default=[c for c in keep().get("crs_done", []) if c in names], key=f"crs_done_w", on_change=_sync_done,
+                           format_func=lambda k: names.get(k, k))
+        done_all = set(keep().get("crs_done", []))
+        courses = [c for c in CR.group_courses([s for s in pool if s["과목코드"] not in done_all]) if CR.filter_sections(c, days)]
+        nsec = sum(len(CR.filter_sections(c, days)) for c in courses)
+        nexcl = len(set(names) & done_all)
+        md(f'<div class="card-sub"><b>{U.esc(CR.AREA_LABEL[view])}</b> · {len(courses)}과목 · {nsec}분반'
+           + (f' · 요일 {U.esc(", ".join(days))}' if days else "") + (f' · 이수 제외 {nexcl}과목' if nexcl else "") + "</div>")
+        if view in COURSE_NOTES:
+            st.caption(COURSE_NOTES[view])
+        if days and "시간 미정" not in days:
+            hidden = sum(1 for s_ in pool if not s_["요일"] and s_["과목코드"] not in done_all)
+            if hidden:
+                st.caption(f"시간이 정해지지 않은 분반 {hidden}개는 요일을 고르면 빠져요. '시간 미정'을 같이 고르면 볼 수 있어요.")
+        if not courses:
+            st.info("조건에 맞는 개설 과목이 없어요. 요일이나 영역을 바꿔 보세요.")
+        groups = {}
+        for c in courses:
+            groups.setdefault(subgroup_label(c["sections"][0], view), []).append(c)
+        parts = ""
+        for g, cs in groups.items():
+            if g and (len(groups) > 1 or view in ("공유혁신", "전공")):
+                parts += f'<div class="crs-group">{U.esc(g)} · {len(cs)}과목</div>'
+            parts += "".join(course_html(c, days) for c in cs)
+        if parts:
+            md(parts)
+        md(f'<div class="ck-src" style="margin-top:.8rem">{U.esc(CR.FOOTER)} 수강 가능 여부는 판단하지 않아요. 비고의 제한 문구는 꼭 직접 확인하세요. 이수한 과목 표시는 이 화면을 닫으면 사라져요.</div>')
 
 
 def page_courses(sc):
-    page_title("이번 학기 개설 과목", "남은 영역에 맞는 개설 과목을 알려 주는 기능이에요.")
-    card_courses(sc)
+    page_title("이번 학기 개설 과목", "영역과 요일로 개설 과목을 찾아보는 기능이에요. 지금은 배재대만 지원해요.")
+    card_courses(sc, full=True)
 
 
 # ---------- 홈·규정 안내 ----------
@@ -633,10 +751,10 @@ def support_table():
             ["학점 외 요건", "지원", "지원"],
             ["영역별 남은 학점", "지원 (각주 1)", "지원 안 함"],
             ["학사 선택 비교", "지원", "일부 (각주 2)"],
-            ["이번 학기 개설 과목", "준비 중 (각주 3)", "준비 중 (각주 3)"],
+            ["이번 학기 개설 과목", "배재대만 (각주 3)", "배재대 교양만 (각주 3)"],
         ]))
         md('<div class="ck-src">1) 한남·한밭은 경영 계열도 영역별 계산이 없고 총 학점만 계산해요. '
-           '2) 학과마다 주전공 학점이 달라 기준표에 없으면 "학과 확인 필요"로 안내해요. 3) 배재대부터 준비 중이에요.</div>')
+           '2) 학과마다 주전공 학점이 달라 기준표에 없으면 "학과 확인 필요"로 안내해요. 3) 배재대 IT경영정보학과 전공과 교양을 지원하고, 다른 대학은 준비 중이에요.</div>')
 
 
 def page_ask(sc):
