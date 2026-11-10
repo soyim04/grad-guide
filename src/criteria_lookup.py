@@ -108,6 +108,20 @@ def transfer_route(univ, q):
     return any(w in q for w in topics if w != "학점")
 
 
+def extra_area_items(q):
+    """E27b: 질문이 졸업학점·교양·전공 가운데 둘 이상을 한꺼번에 물으면 그 항목 전부(질문에 나온 순서가 아닌 고정 순서). 하나뿐이면 빈 목록.
+    복수전공·다전공·제2전공·부전공의 "전공"은 영역 낱말이 아니므로 지우고 본다."""
+    q2 = re.sub(r"복수전공|다전공|제2전공|부전공|연계전공|융합전공", "", q)
+    found = []
+    if re.search(r"졸업\s?학점|졸업.*학점", q2):
+        found.append("졸업학점")
+    if "교양" in q2:
+        found.append("교양")
+    if "전공" in q2:
+        found.append("전공")
+    return found if len(found) >= 2 and "학점" in q2 else []
+
+
 def in_range(row, year):
     start = int(row["입학년도_시작"]) if row["입학년도_시작"] else -1
     end = int(row["입학년도_끝"]) if row["입학년도_끝"] else 9999
@@ -137,6 +151,13 @@ def lookup(question):
     if transfer_route(univ[0], question):  # E25b: 편입 행이 다루는 주제(전공·교양·필수·면제 등)가 질문에 있으면 편입_이수요건
         items = ["편입_이수요건"]
     optional = False
+    multi = extra_area_items(question) if items == ["졸업학점"] or not items else []
+    opt_items = set()
+    if multi:  # E27b: 졸업학점·교양·전공 중 둘 이상을 묻는 질문은 모두 조회. 행이 없는 항목은 건너뛴다(기존 졸업학점 단독 조회가 새로 RAG로 가지 않게)
+        items = multi
+        opt_items = set(multi) - {"졸업학점"} if "졸업학점" in multi else set(multi)
+        if "졸업학점" not in multi:
+            optional = True
     if not items and AREA_ASK_RE.search(question) and dept_in_criteria(univ[0], question):
         items, optional = AREA_ITEMS, True
     if not items:
@@ -158,10 +179,10 @@ def lookup(question):
                 cand, any_spec = spec, True
             else:
                 cand = [r for r in cand if r["대상"] == "전체"]
-                if mentions and not cand and not optional:
+                if mentions and not cand and not optional and item not in opt_items:
                     return None, f"질문의 {mentions}에 맞는 대상 행 없음"
             if not cand:
-                if optional:
+                if optional or item in opt_items:
                     continue
                 return None, f"{item} 행 없음(묶음 불완전)"
             rows += cand
