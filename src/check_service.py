@@ -413,15 +413,25 @@ def cmd_logic():
     for r_ in L.CRITERIA:
         if r_["대학"] == "목원" and r_["항목"] == "졸업학점" and r_["대상단위"] != "대학":
             for t_ in L.targets_of(r_):
-                for y_ in range(2024, 2027):
+                for y_ in range(2022, 2027):
                     if L.in_range(r_, y_):
                         mw_grad.setdefault((t_, y_), []).append(int(r_["값"]))
-    mw_depts = {(t_, y_) for r_ in L.CRITERIA if r_["대학"] == "목원" and r_["대상단위"] == "학과" and r_["항목"] == "교양" for t_ in L.targets_of(r_) for y_ in range(2024, 2027) if L.in_range(r_, y_) and t_ != "사범대학"}
+    mw_depts = {(t_, y_) for r_ in L.CRITERIA if r_["대학"] == "목원" and r_["대상단위"] == "학과" and r_["항목"] == "교양" for t_ in L.targets_of(r_) for y_ in range(2022, 2027) if L.in_range(r_, y_) and t_ != "사범대학"}
     teach_ = ("국어교육과", "영어교육과", "음악교육과", "미술교육과", "유아교육과", "수학교육과", "에듀테크융합자율전공학부")
-    check("E27b: 목원 2024~2026 학과 묶음 모든 학과·학번에 졸업학점 행이 정확히 하나(원문 합계: 126, 건축학(5년)전공 160, 사범 계열 134, 글로벌융합 120)",
-          all(len(mw_grad.get(k_, [])) == 1 for k_ in mw_depts)
-          and all(mw_grad[k_][0] == (160 if "건축학(5년)" in k_[0] else 134 if k_[0] in teach_ else 120 if "글로벌융합" in k_[0] else 126) for k_ in mw_depts),
-          [k_ for k_ in mw_depts if len(mw_grad.get(k_, [])) != 1])
+    def mw_want(k_):  # 원문 합계 칸: 2022 기본 132(건축학(5년) 165·정보통신 140·사범 140), 2023 기본 126(건축학(5년) 160·사범 134), 2024~ 126(건축학(5년) 160·사범 134·글로벌융합 120)
+        d_, y_ = k_
+        if "건축학(5년)" in d_:
+            return 165 if y_ == 2022 else 160
+        if d_ in teach_:
+            return 140 if y_ == 2022 else 134
+        if d_ == "정보통신공학과" and y_ == 2022:
+            return 140
+        if "글로벌융합" in d_:
+            return 120
+        return 132 if y_ == 2022 else 126
+    check("E27b·E27c: 목원 2022~2026 학과 묶음 모든 학과·학번에 졸업학점 행이 정확히 하나이고 값이 원문 합계 칸과 같다",
+          all(len(mw_grad.get(k_, [])) == 1 for k_ in mw_depts) and all(mw_grad[k_][0] == mw_want(k_) for k_ in mw_depts),
+          [k_ for k_ in mw_depts if len(mw_grad.get(k_, [])) != 1 or mw_grad[k_][0] != mw_want(k_)])
     # 1-1e. 회귀 사례(E20, 서비스 점검 #14): 편입생 필수·면제 질문은 편입_이수요건(BJ-060~063)을 조회한다(배재). 학점·수치 질문은 영향 없음
     E20_ROWS = ["BJ-060", "BJ-061", "BJ-062", "BJ-063"]
     for raw in ("편입생은 전공 말고 필수로 들어야하는게 아펜젤러만 있나?", "편입생도 채플 들어야 해?", "편입생 교양필수 뭐 들어야 돼?"):
