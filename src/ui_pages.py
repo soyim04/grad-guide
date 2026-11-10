@@ -136,12 +136,14 @@ def sidebar():
     if kind.startswith(base) or not others:
         dept, dept_state = base, "base"
     else:
-        # 한남은 졸업학점이 계열 단위라 대학 공통 행이 없어 '목록에 없는 학과'를 두지 않는다(계열을 고르게 한다)
+        # 한남은 졸업학점이 계열 단위라 대학 공통 행이 없어 '목록에 없는 학과'를 두지 않는다. E26: 학과를 기본으로 고르고, 계열은 목록에 없는 학과의 대체용으로 맨 아래에 둔다
         generic_ok = univ != "한남"
+        if not generic_ok:
+            others = [t for t in others if not t.endswith("계열")] + [t for t in others if t.endswith("계열")]
         options = [PLACEHOLDER_DEPT, *others, *([GENERIC_DEPT] if generic_ok else [])]
         pick = sb.selectbox("학과·계열 선택", options, key=f"dept_{univ}")
         if not generic_ok:
-            sb.caption("한남은 졸업학점이 계열별로 달라요. 학과가 속한 계열을 고르세요.")
+            sb.caption("한남은 졸업학점이 계열별로 달라요. 목록에 없는 학과는 학과가 속한 계열을 고르세요.")
         if pick == PLACEHOLDER_DEPT:
             dept, dept_state = None, "unselected"
         elif pick == GENERIC_DEPT:

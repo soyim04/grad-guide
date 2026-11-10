@@ -33,13 +33,15 @@ def _detail(item):
     return item in TOP or any(item.startswith(p) for ks in KID_PREFIX.values() for p in ks)
 
 
-AREA_UNIVS = {"배재", "목원"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
+AREA_UNIVS = {"배재", "목원", "한남"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
 
 
 def default_method(univ, year, dept=None):
     """기본 이수 방식. 충남 2026~는 책자가 심화단수를 기본 유형으로 적는다(스키마 충남 매핑), 배재 2025~는 단수가 불가라 융합과정.
     E23: 배재 2025~에서 공유혁신과정이 없는 학과(별지3 공유혁신 칸 '-': 유아교육·간호·건축·글로벌자율융합·평생교육융합)는 표가 단수전공으로 적어 단수."""
     if univ == "충남" and year >= 2026:
+        return "심화단수"
+    if univ == "한남" and year <= 2022:  # E26: 2019~2022 한남 이수 선택지는 심화전공·다전공뿐(시행세칙 제12조 ④ 1호)이라 기본은 심화단수
         return "심화단수"
     if univ == "배재" and year >= 2025:
         if dept and dept != BASE_DEPT[univ] and not any(r["대학"] == univ and r["항목"] == "교양" and r["이수유형"] == "융합과정" and L.in_range(r, year) and dept in L.targets_of(r)
@@ -298,6 +300,8 @@ def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=No
             add("졸업 평점", "확인불가", "졸업 최저 평점을 규정에서 확인하지 못했어요(확인 불가).", r)
         else:
             add("졸업 평점", "요건", f"졸업하려면 전체 평점평균 {float(r['값']):.2f}점 이상이 필요해요.", r, r["비고"] if "의예과" in r["비고"] else "")
+    for r in _pick_rows(univ, dept, year, "공학인증_안내"):  # E26: 한남 공학교육인증 운영학과 안내(상태 잠정, 본문은 조건 칸)
+        add("공학교육인증", "안내", r["조건"], r)
     seen = set()
     for r in _pick_rows(univ, dept, year, "비교과_이수"):
         cond = r["조건"]
