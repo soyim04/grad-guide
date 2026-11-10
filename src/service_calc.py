@@ -19,7 +19,7 @@ import criteria_lookup as L
 BASE_DEPT = {"배재": "IT경영정보학과", "충남": "경영학부", "한남": "경영정보학과", "한밭": "융합경영학과", "목원": "경영학부"}
 YEARS = [2022, 2023, 2024, 2025, 2026]
 ENTRY_TYPES = ["신입", "편입", "재입학"]
-TOP = ("교양", "전공", "일반선택", "대학특화", "공유혁신")
+TOP = ("교양", "전공", "일반선택", "대학특화", "공유혁신", "MSC교과", "교직필수")
 KID_PREFIX = {
     "교양": ("교양필수", "교양핵심", "교양선택", "교양_"),
     "전공": ("전공필수", "전공선택", "전공기초", "전공핵심", "전공심화", "기본전공", "심화전공"),
@@ -33,7 +33,7 @@ def _detail(item):
     return item in TOP or any(item.startswith(p) for ks in KID_PREFIX.values() for p in ks)
 
 
-AREA_UNIVS = {"배재"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
+AREA_UNIVS = {"배재", "목원"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
 
 
 def default_method(univ, year, dept=None):
@@ -108,7 +108,7 @@ def source_of(r):
 
 def grad_targets(univ):
     """졸업학점 기준 행이 있는 대상 이름(학과·계열·단과대학). '그 외 학과' 선택지"""
-    names = {t for r in L.CRITERIA if r["대학"] == univ and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and r["대상"] != "전체" for t in [r["대상"]]}
+    names = {t for r in L.CRITERIA if r["대학"] == univ and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and r["대상"] != "전체" for t in L.targets_of(r)}
     if univ in AREA_UNIVS:  # E23: 묶음 행(영역별 기준)에 나열된 학과도 선택지에 넣는다
         names |= {t for r in L.CRITERIA if r["대학"] == univ and r["기준값여부"] == "기준" and _detail(r["항목"]) and r["대상"] != "전체" for t in L.targets_of(r)}
     return sorted(names)
@@ -176,7 +176,7 @@ def area_plan(univ, dept, year):
         lo += v[0]
         hi += v[1]
         kids = [r for r in rows if r["항목"] not in TOP and any(r["항목"].startswith(p) for p in KID_PREFIX.get(name, ()))]
-        check = _child_check(kids, row) if kids else None
+        check = _child_check(kids, row) if kids and not all(k["조건"].startswith("전공 중") for k in kids) else None  # E24: 괄호 전공필수는 전공의 일부라 합 검사 안 함
         plan["areas"].append({"name": name, "row": row, "min": v[0], "max": v[1], "op": row["비교"], "children": kids,
                               "check": check})
     if pct:
