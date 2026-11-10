@@ -40,13 +40,19 @@ def norm(s):
 _PARTICLE = r"(?:이랑|에서|으로|[은는이가을를의도에와과로만랑])?"
 
 
+def targets_of(row_or_target):
+    """행 대상 문자열을 학과 이름 목록으로. E23: 묶음 행은 대상에 학과 이름을 쉼표로 나열한다(예: '생명공학과,식품영양학과'). 공백은 이름 안에 든 것으로 본다"""
+    t = row_or_target["대상"] if isinstance(row_or_target, dict) else row_or_target
+    return [x.strip() for x in t.split(",") if x.strip()]
+
+
 def target_mentioned(target, question):
     """질문이 행의 대상 이름을 말했는가(E22b). 글자 경계에서만 걸린다: 앞은 한글이 아니고, 뒤는 한글이 아니되 조사·접미어(학과·학부·전공·과)는 허용.
     비교 이름은 괄호를 뺀 전체 이름, 접미어를 뗀 이름(2자 이상), '이학·공학…계열'은 부분+'계열'. 옛 규칙(norm 부분 문자열)은
     '교육'이 '기계금속공학교육과' 안에 걸리고 '의'·'약'·'및' 같은 한 글자가 아무 질문에나 걸렸다."""
     q = re.sub(r"\([^)]*\)", "", question)
     pats = []
-    for t in target.split():
+    for t in (w for name in targets_of(target) for w in name.split()):
         stem = norm(t)
         if not stem:
             continue

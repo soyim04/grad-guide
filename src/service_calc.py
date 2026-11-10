@@ -33,17 +33,24 @@ def _detail(item):
     return item in TOP or any(item.startswith(p) for ks in KID_PREFIX.values() for p in ks)
 
 
-def default_method(univ, year):
-    """기본 이수 방식. 충남 2026~는 책자가 심화단수를 기본 유형으로 적는다(스키마 충남 매핑), 배재 2025~는 단수가 불가라 융합과정."""
+AREA_UNIVS = {"배재"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
+
+
+def default_method(univ, year, dept=None):
+    """기본 이수 방식. 충남 2026~는 책자가 심화단수를 기본 유형으로 적는다(스키마 충남 매핑), 배재 2025~는 단수가 불가라 융합과정.
+    E23: 배재 2025~에서 공유혁신과정이 없는 학과(별지3 공유혁신 칸 '-': 유아교육·간호·건축·글로벌자율융합·평생교육융합)는 표가 단수전공으로 적어 단수."""
     if univ == "충남" and year >= 2026:
         return "심화단수"
     if univ == "배재" and year >= 2025:
+        if dept and dept != BASE_DEPT[univ] and not any(r["대학"] == univ and r["항목"] == "교양" and r["이수유형"] == "융합과정" and L.in_range(r, year) and dept in L.targets_of(r)
+                                                      for r in L.CRITERIA)                 and any(r["대학"] == univ and r["항목"] == "교양" and r["이수유형"] == "단수" and L.in_range(r, year) and dept in L.targets_of(r) for r in L.CRITERIA):
+            return "단수"
         return "융합과정"
     return "단수"
 
 
 def _rank(r, dept):
-    if dept and r["대상"] == dept:
+    if dept and (r["대상"] == dept or dept in L.targets_of(r)):
         return 0
     if r["대상"] == "전체":
         return 2
@@ -101,12 +108,15 @@ def source_of(r):
 
 def grad_targets(univ):
     """졸업학점 기준 행이 있는 대상 이름(학과·계열·단과대학). '그 외 학과' 선택지"""
-    return sorted({r["대상"] for r in L.CRITERIA if r["대학"] == univ and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and r["대상"] != "전체"})
+    names = {t for r in L.CRITERIA if r["대학"] == univ and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and r["대상"] != "전체" for t in [r["대상"]]}
+    if univ in AREA_UNIVS:  # E23: 묶음 행(영역별 기준)에 나열된 학과도 선택지에 넣는다
+        names |= {t for r in L.CRITERIA if r["대학"] == univ and r["기준값여부"] == "기준" and _detail(r["항목"]) and r["대상"] != "전체" for t in L.targets_of(r)}
+    return sorted(names)
 
 
 def graduation_row(univ, dept, year, method=None):
     """총 졸업학점 행 하나(이수 방식 행 우선, 없으면 이수유형이 빈 공통 행: 규칙 11). 없거나 여러 개면 None"""
-    method = method or default_method(univ, year)
+    method = method or default_method(univ, year, dept)
     for t in (method, ""):
         rows = _best(univ, dept, year, lambda i: i == "졸업학점", t)
         if len(rows) == 1:
@@ -131,14 +141,14 @@ def _child_check(kids, parent_row):
 
 def area_plan(univ, dept, year):
     """영역별 계획. 반환 dict: tier, grad(행), method, areas[], unassigned, badges[], notes[], ref_rows[]"""
-    method = default_method(univ, year)
+    method = default_method(univ, year, dept)
     grad = graduation_row(univ, dept, year, method)
     plan = {"univ": univ, "dept": dept, "year": year, "method": method, "grad": grad, "areas": [], "unassigned": None,
             "badges": [], "notes": [], "ref_rows": [], "tier": "T0"}
     if grad is None:
         plan["notes"].append("이 대학·학번·학과의 총 졸업학점 기준을 기준표에서 찾지 못했어요(확인 불가).")
         return plan
-    if dept != BASE_DEPT[univ]:
+    if dept is None or (dept != BASE_DEPT[univ] and univ not in AREA_UNIVS):
         plan["notes"].append("영역별 기준은 경영 계열 학과만 기준표에 있어서, 이 학과는 총 졸업학점까지만 계산해요.")
         return plan
     det = []
@@ -148,6 +158,9 @@ def area_plan(univ, dept, year):
     plan["ref_rows"] = det
     rows = _best(univ, dept, year, _detail, method)
     tops = {r["항목"]: r for r in rows if r["항목"] in TOP and r["상태"] != "불가"}
+    if not tops and dept != BASE_DEPT[univ]:  # E23: 영역별 묶음 행이 없는 학과(별지3 표에 없는 학과 등)는 총 졸업학점까지
+        plan["notes"].append("영역별 기준은 경영 계열 학과만 기준표에 있어서, 이 학과는 총 졸업학점까지만 계산해요.")
+        return plan
     g = float(grad["값"])
     lo = hi = 0.0
     pct = False
@@ -245,7 +258,7 @@ def _teacher_applies(cond, teacher):
 
 def _pick_rows(univ, dept, year, item):
     rows = [r for r in L.CRITERIA if r["대학"] == univ and r["기준값여부"] == "기준" and r["항목"] == item and L.in_range(r, year) and _rank(r, dept) < 9]
-    dept_rows = [r for r in rows if r["대상"] == dept]
+    dept_rows = [r for r in rows if r["대상"] == dept or (dept and dept in L.targets_of(r))]
     return dept_rows or rows  # 규칙 8: 학과 행이 있으면 대학 행을 덮어쓴다
 
 

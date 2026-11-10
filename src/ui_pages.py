@@ -520,6 +520,7 @@ def courses_link_block(sc, stt):
             return
         transfer = sc["entry"] == "편입"
         targets, pick = CR.deficit_targets(sc["year"], rem["areas"], transfer, stt["kids_input"])
+        targets = [v for v in targets if v != "전공" or sc["dept"] == S.BASE_DEPT["배재"]]  # E23: 전공 개설 과목은 IT경영정보학과만 있다
         if targets or pick:
             st.caption("부족한 영역의 이번 학기 개설 과목 보기")
         for v in targets:
