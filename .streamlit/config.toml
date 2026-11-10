@@ -1,13 +1,13 @@
-# Streamlit 화면 테마 (src/app.py, 졸업나침반). 포인트는 연보라 #5B47C7, 보조는 파랑(#2F6FED, CSS에서 사용).
+# Streamlit 화면 테마 (src/app.py, 졸업나침반). 노션 느낌: 흰 바탕, 옅은 선, 포인트는 남색 #1E3A8A 하나. 노랑은 CSS에서 확인 불가 표시에만 쓴다.
 [theme]
 base = "light"
-primaryColor = "#5B47C7"
+primaryColor = "#1E3A8A"
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#F4F1FD"
-textColor = "#1F2340"
-linkColor = "#5B47C7"
-borderColor = "#E3DEF5"
-baseRadius = "large"
+secondaryBackgroundColor = "#F7F7F5"
+textColor = "#2F3437"
+linkColor = "#1E3A8A"
+borderColor = "#E9E9E7"
+baseRadius = "medium"
 font = "sans-serif"
 
 [client]

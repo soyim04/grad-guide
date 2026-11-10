@@ -12,43 +12,49 @@ import streamlit as st
 
 CSS = """
 <style>
-:root{--pt:#5B47C7;--pt-d:#4A38AD;--soft:#F1EEFB;--soft2:#F7F5FD;--line:#E6E2F5;--ink:#1F2340;--mute:#6B7089;
---blue:#2F6FED;--blue-bg:#EAF1FF;--warn-bg:#FFF4D6;--warn-ink:#8A5A00;--warn-line:#F2DFA0;}
+:root{--pt:#1E3A8A;--tint:#EEF1FA;--soft:#F7F7F5;--soft2:#F7F7F5;--line:#E9E9E7;--ink:#2F3437;--mute:#6B6F76;
+--warn-bg:#FFF4D6;--warn-ink:#8A5A00;--warn-line:#F2DFA0;}
 html,body,.stApp,button,input,textarea,select{font-family:"Pretendard","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif;}
-.stApp{background:#FAFAFE;color:var(--ink);}
+.stApp{background:#fff;color:var(--ink);}
 /* 도구 막대(stToolbar) 전체는 숨기지 않는다: 사이드바 펼치기 버튼(stExpandSidebarButton)이 그 안에 있다. 필요 없는 것만 개별로 숨긴다. */
 [data-testid="stMainMenu"],[data-testid="stAppDeployButton"],[data-testid="stDecoration"],[data-testid="stStatusWidget"],footer,#MainMenu{display:none!important;}
 [data-testid="stExpandSidebarButton"],[data-testid="stSidebarCollapseButton"]{display:flex!important;visibility:visible!important;opacity:1!important;}
 [data-testid="stHeader"]{background:transparent;}
-[data-testid="stMainBlockContainer"]{max-width:1280px;padding-top:1.6rem;padding-bottom:3rem;}
+[data-testid="stMainBlockContainer"]{max-width:1100px;padding-top:1.6rem;padding-bottom:3rem;}
 p,li,label,[data-testid="stMarkdownContainer"]{font-size:1rem;line-height:1.65;}
 h1,h2,h3,h4{letter-spacing:-0.01em;color:var(--ink);}
 
-/* 사이드바 */
+/* 사이드바(너비 240px 고정) */
 section[data-testid="stSidebar"]{background:#fff;border-right:1px solid var(--line);}
+section[data-testid="stSidebar"][aria-expanded="true"]{width:240px!important;min-width:240px!important;}
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{padding-top:1.2rem;}
-.brand{display:flex;gap:12px;align-items:center;margin-bottom:.2rem;}
-.brand-ico{width:42px;height:42px;border-radius:12px;background:var(--pt);color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.4rem;}
-.brand-name{font-size:1.3rem;font-weight:800;color:var(--ink);line-height:1.2;}
-.brand-sub{font-size:.88rem;color:var(--mute);line-height:1.4;margin:.4rem 0 1rem;}
-.side-h{font-size:.8rem;font-weight:700;color:var(--mute);letter-spacing:.04em;margin:1.1rem 0 .3rem;}
-.side-note{font-size:.85rem;color:var(--mute);line-height:1.5;}
-[class*="st-key-navitem_"] button{justify-content:flex-start;border:none;background:transparent;color:var(--ink);font-size:1rem;padding:.55rem .8rem;border-radius:10px;box-shadow:none;}
-[class*="st-key-navitem_"] button:hover{background:var(--soft2);color:var(--pt);}
-[class*="navitem_"][class*="__on"] button{background:var(--soft);color:var(--pt);font-weight:700;}
+.brand{display:flex;gap:10px;align-items:center;margin-bottom:1rem;}
+.brand-ico{width:34px;height:34px;border-radius:8px;background:#1E3A8A url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M15.5 8.5l-2 5-5 2 2-5z'/%3E%3C/svg%3E") center/62% no-repeat;}
+.brand-name{font-size:19px;font-weight:800;color:var(--ink);line-height:1.2;}
+.side-h{font-size:14px;font-weight:700;color:var(--ink);margin:1.1rem 0 .3rem;}
+.side-note{font-size:.82rem;color:var(--mute);line-height:1.5;}
+/* 사이드바 입력: 라벨 14px, 선택 상자 글씨 15px·높이 40px (실제 data-testid: stWidgetLabel·stSelectbox·stRadio·stCheckbox) */
+section[data-testid="stSidebar"] [data-testid="stWidgetLabel"],section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] p,section[data-testid="stSidebar"] [data-testid="stWidgetLabel"] label{font-size:14px!important;}
+section[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"]>div{min-height:40px!important;}
+section[data-testid="stSidebar"] [data-testid="stSelectbox"] [data-baseweb="select"] *{font-size:15px!important;}
+section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"] label p,section[data-testid="stSidebar"] [data-testid="stCheckbox"] label p{font-size:15px!important;}
+[class*="st-key-navitem_"] button{justify-content:flex-start;border:none;background:transparent;color:var(--ink);font-size:16px;min-height:44px;padding:.4rem .8rem;border-radius:8px;box-shadow:none;}
+[class*="st-key-navitem_"] button p{font-size:16px;}
+[class*="st-key-navitem_"] button:hover{background:var(--soft);color:var(--pt);}
+[class*="navitem_"][class*="__on"] button{background:var(--tint);color:var(--pt);font-weight:700;}
 section[data-testid="stSidebar"] [data-testid="stAlert"]{font-size:.9rem;}
 
 /* 상단 */
 .topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:1.1rem;flex-wrap:wrap;}
 .topbar-title{font-size:1.55rem;font-weight:800;line-height:1.3;}
 .topbar-sub{font-size:.95rem;color:var(--mute);margin-top:.2rem;}
-.pill{background:var(--soft);color:var(--pt);border-radius:999px;padding:.4rem .9rem;font-size:.88rem;font-weight:600;white-space:nowrap;}
+.pill{background:var(--soft);color:var(--ink);border-radius:999px;padding:.4rem .9rem;font-size:.88rem;font-weight:600;white-space:nowrap;}
 .page-title{font-size:1.25rem;font-weight:800;margin:.4rem 0 .2rem;}
 .page-sub{font-size:.95rem;color:var(--mute);margin-bottom:1rem;}
 
-/* 카드 */
-[class*="st-key-card_"]{background:#fff;border:1px solid var(--line);border-radius:16px;padding:1.3rem 1.3rem 1.1rem;box-shadow:0 2px 12px rgba(91,71,199,.06);}
-.st-key-card_courses_soon{background:transparent;border:1.5px dashed #CFC8EC;box-shadow:none;}
+/* 카드(선과 8px 모서리만, 그림자 없음) */
+[class*="st-key-card_"]{background:#fff;border:1px solid var(--line);border-radius:8px;padding:1.3rem 1.3rem 1.1rem;box-shadow:none;}
+.st-key-card_courses_soon{background:transparent;border:1px dashed #D3D3CF;box-shadow:none;}
 .card-h{display:flex;justify-content:space-between;align-items:center;font-size:1.1rem;font-weight:800;margin-bottom:.5rem;}
 .card-sub{font-size:.95rem;color:var(--mute);margin-bottom:.4rem;}
 .bignum{font-size:3rem;font-weight:800;color:var(--pt);line-height:1.1;margin:.2rem 0 .1rem;}
@@ -57,32 +63,32 @@ section[data-testid="stSidebar"] [data-testid="stAlert"]{font-size:.9rem;}
 .statline{display:flex;gap:1.4rem;font-size:.95rem;color:var(--mute);margin:.3rem 0 .6rem;}
 .statline b{color:var(--ink);}
 
-/* 배지·박스 */
+/* 배지·박스(노랑은 확인 불가 성격에만) */
 .badge{display:inline-block;border-radius:999px;padding:.12rem .6rem;font-size:.8rem;font-weight:700;white-space:nowrap;}
 .b-req{border:1px solid var(--pt);color:var(--pt);background:#fff;}
-.b-none{background:#EEF0F4;color:#59607A;}
-.b-na{background:#F4F5F8;color:#8A90A6;}
+.b-none{background:#EEEEEC;color:#5A5F66;}
+.b-na{background:#F4F4F2;color:#8A8E94;}
 .b-warn{background:var(--warn-bg);color:var(--warn-ink);}
 .b-grade{background:var(--soft);color:var(--pt);}
-.b-cur{background:var(--blue-bg);color:var(--blue);}
-.b-old{background:#EEF0F4;color:#59607A;}
-.b-info{background:var(--blue-bg);color:var(--blue);}
+.b-cur{background:var(--soft);color:var(--pt);}
+.b-old{background:#EEEEEC;color:#5A5F66;}
+.b-info{background:var(--soft);color:var(--pt);}
 .b-soon{background:var(--soft);color:var(--pt);}
-.callout{border-radius:12px;padding:.75rem 1rem;margin:.5rem 0;font-size:.97rem;line-height:1.6;}
+.callout{border-radius:8px;padding:.75rem 1rem;margin:.5rem 0;font-size:.97rem;line-height:1.6;}
 .callout-warn{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line);}
-.callout-info{background:var(--blue-bg);color:#1D4FB8;}
+.callout-info{background:var(--soft);color:var(--pt);}
 .callout-soft{background:var(--soft);color:var(--ink);}
 .callout-concl{background:var(--soft);color:var(--ink);border-left:4px solid var(--pt);}
 
 /* 학점 외 요건 */
-.ck{display:flex;gap:.7rem;align-items:flex-start;border-radius:12px;padding:.6rem .8rem;margin:.4rem 0;background:var(--soft2);}
+.ck{display:flex;gap:.7rem;align-items:flex-start;border-radius:8px;padding:.6rem .8rem;margin:.4rem 0;background:var(--soft);}
 .ck-warn{background:var(--warn-bg);}
 .ck-text{font-size:.93rem;color:var(--mute);line-height:1.55;}
 .ck-warn .ck-text{color:var(--warn-ink);}
 .ck-src{font-size:.8rem;color:var(--mute);margin-top:.15rem;}
 
 /* 근거 카드 */
-.src{border:1px solid var(--line);border-radius:12px;padding:.7rem .9rem;margin:.45rem 0;background:#fff;}
+.src{border:1px solid var(--line);border-radius:8px;padding:.7rem .9rem;margin:.45rem 0;background:#fff;}
 .src-top{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;font-weight:700;}
 .src .num{color:var(--pt);font-weight:800;}
 .src-meta{font-size:.9rem;color:var(--mute);margin-top:.2rem;line-height:1.5;}
@@ -99,11 +105,11 @@ table.tbl tr.subrow td{font-size:.9rem;}
 /* 질문·답 */
 .q-line{font-weight:800;font-size:1.02rem;margin:.6rem 0 .3rem;}
 .q-scope{font-weight:500;color:var(--mute);font-size:.85rem;margin-left:.4rem;}
-[class*="st-key-ans_"]{background:var(--soft2);border:1px solid var(--line);border-radius:12px;padding:1rem 1.1rem;margin:.3rem 0 .6rem;}
+[class*="st-key-ans_"]{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:1rem 1.1rem;margin:.3rem 0 .6rem;}
 [class*="st-key-chips_"] button{border-radius:999px;border:1px solid var(--line);background:#fff;color:var(--ink);font-size:.9rem;padding:.25rem .8rem;min-height:2rem;}
 [class*="st-key-chips_"] button:hover{border-color:var(--pt);color:var(--pt);}
-.stButton>button,.stFormSubmitButton>button{border-radius:10px;font-weight:600;}
-[data-testid="stExpander"]{border-radius:12px;border:1px solid var(--line);}
+.stButton>button,.stFormSubmitButton>button{border-radius:8px;font-weight:600;}
+[data-testid="stExpander"]{border-radius:8px;border:1px solid var(--line);}
 [data-testid="stNumberInput"] input,[data-testid="stTextInput"] input{font-size:1rem;}
 /* 질문창의 영어 안내("Press Enter to submit form")는 입력 글자와 겹쳐 숨긴다 */
 [data-testid="InputInstructions"]{display:none!important;}
@@ -116,18 +122,36 @@ details.det{margin-top:.25rem;font-size:.85rem;color:var(--mute);}
 details.det summary{cursor:pointer;color:var(--pt);font-weight:600;}
 details.det div{margin:.15rem 0 0 .2rem;line-height:1.5;}
 /* 개설 과목 목록 */
-details.crs{border:1px solid var(--line);border-radius:12px;background:#fff;margin:.4rem 0;padding:.55rem .85rem;}
+details.crs{border:1px solid var(--line);border-radius:8px;background:#fff;margin:.4rem 0;padding:.55rem .85rem;}
 details.crs summary{cursor:pointer;line-height:1.7;}
 .crs-sec{border-top:1px solid var(--line);margin-top:.5rem;padding-top:.45rem;font-size:.93rem;line-height:1.6;}
 .crs-memo{font-size:.8rem;color:var(--mute);line-height:1.5;margin-top:.1rem;word-break:keep-all;}
 .crs-group{font-weight:800;color:var(--pt);margin:1rem 0 .2rem;font-size:.98rem;}
-/* 약어 툴팁 · 홈 3단계 */
+/* 약어 툴팁 */
 abbr.abbr{text-decoration:underline dotted;text-underline-offset:3px;cursor:help;}
-.step-label{font-weight:800;color:var(--pt);font-size:.95rem;margin-bottom:.25rem;}
-.step-txt{font-size:.95rem;line-height:1.5;color:var(--ink);padding:.45rem 0;}
-.step-arrow{font-size:1.4rem;line-height:1;color:var(--pt);text-align:center;}
-[class*="st-key-steps_row"] [data-testid="stColumn"]:has(.step-arrow){align-self:center;}  /* 화살표는 단계 제목 줄과 버튼 사이(블록 가운데)에 */
-@media (max-width:640px){[class*="st-key-steps_row"] [data-testid="stColumn"]:has(.step-arrow){display:none;}}
+/* 시작하기 */
+.hero{display:flex;gap:14px;align-items:center;margin:.2rem 0 1.6rem;}
+.hero-ico{flex:none;width:48px;height:48px;border-radius:8px;background:var(--tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231E3A8A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M15.5 8.5l-2 5-5 2 2-5z'/%3E%3C/svg%3E") center/62% no-repeat;}
+.hero-title{font-size:1.7rem;font-weight:800;line-height:1.25;}
+.hero-sub{font-size:1rem;color:var(--mute);margin-top:.15rem;}
+.home-h{font-size:1.1rem;font-weight:800;margin:1.6rem 0 .4rem;}
+[class*="st-key-hstep_"]{border-bottom:1px solid var(--line);box-sizing:border-box;min-height:76px;padding:.2rem 0 12px;margin-bottom:12px;}
+[class*="st-key-hsit_"]{border-bottom:1px solid var(--line);box-sizing:border-box;min-height:52px;padding:0;display:flex;flex-direction:column;justify-content:center;}
+[class*="st-key-hsit_"] [data-testid="stHorizontalBlock"]{align-items:center;}
+[class*="st-key-hsit_"] [data-testid="stMarkdownContainer"] p,[class*="st-key-hsit_"] [data-testid="stElementContainer"],[class*="st-key-hsit_"] [data-testid="stButton"]{margin:0!important;}
+.st-key-hstep_2 [data-testid="stButton"]{margin-left:38px;}
+.st-key-hstep_2 button{padding-left:0;}
+.stp{display:flex;gap:12px;align-items:flex-start;margin-bottom:.2rem;}
+.stp-no{flex:none;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--pt);color:var(--pt);display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:700;margin-top:.1rem;}
+.stp-no.on{background:var(--pt);color:#fff;}
+.stp-t{font-weight:700;line-height:1.5;}
+.stp-d{font-size:.9rem;color:var(--mute);line-height:1.55;}
+.stp-tag{display:inline-block;font-size:.75rem;font-weight:700;color:var(--mute);background:var(--soft);border-radius:999px;padding:.05rem .5rem;margin-left:.4rem;vertical-align:middle;}
+.sit-q{line-height:1.6;padding:0;margin:0;}
+.note-box{background:var(--soft);border-radius:8px;padding:.8rem 1.1rem;margin-top:.4rem;}
+.note-box ul{margin:0;padding-left:1.1rem;}
+.note-box li{font-size:.93rem;color:var(--ink);line-height:1.65;}
+.st-key-hstep_2 button,[class*="st-key-hsit_"] [data-testid="stColumn"]:last-child button{color:var(--pt);font-weight:700;white-space:nowrap;}
 /* 입학 구분 라디오를 조각 모양으로 */
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>

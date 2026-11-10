@@ -1,6 +1,6 @@
 """졸업나침반 화면 페이지(7단계 새 디자인). 계산·조회·엔진은 기존 함수를 그대로 부르고, 여기서는 배치와 표시만 한다.
 
-페이지: 홈 · 학사 규정 안내 · 내 졸업요건 · 학사 선택 비교 · 이번 학기 개설 과목 · (개발자 모드) 로그
+페이지: 시작하기 · 규정 질문 · 내 졸업요건 · 학사 선택 비교 · 이번 학기 개설 과목 · (개발자 모드) 로그
 - 사이드바 입력은 바로 적용된다(저장 버튼 없음). 이수 학점·평점은 session_state 메모리에만 두고 디스크·로그에는 쓰지 않는다.
 - 페이지를 옮기면 그 페이지에서 그려지지 않은 위젯의 값은 Streamlit이 지우므로, 학점 입력은 `keep` 사전에 따로 복사해 두고 위젯 초기값으로 읽는다.
 - 학생 화면에는 응답 시간·비용·로그를 보이지 않는다. 주소에 `?dev=1`이 있을 때만 보인다.
@@ -23,16 +23,14 @@ UNIVS = list(S.BASE_DEPT)
 YEAR_CHOICES = [*S.YEARS, "모름", engine.OUT_OF_RANGE]
 LONG_ANSWER = 300  # 이 글자 수를 넘으면 첫 문단만 먼저 보여 주고 나머지는 접는다
 EXAMPLES = ["졸업하려면 총 몇 학점이 필요해?", "부전공은 몇 학점 이수해야 해?", "재수강은 어떻게 하나요?", "부전공과 복수전공 중 어느 쪽이 전공학점이 적어?"]
-PAGES = [("home", "홈", ":material/home:"), ("ask", "학사 규정 안내", ":material/forum:"), ("remaining", "내 졸업요건", ":material/checklist:"),
-         ("compare", "학사 선택 비교", ":material/compare_arrows:"), ("courses", "이번 학기 개설 과목", ":material/menu_book:")]
-DEV_PAGE = ("dev", "개발자 · 로그", ":material/terminal:")
+PAGES = [("home", "시작하기"), ("ask", "규정 질문"), ("remaining", "내 졸업요건"), ("compare", "학사 선택 비교"), ("courses", "이번 학기 개설 과목")]
+DEV_PAGE = ("dev", "개발자 · 로그")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
 KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음"), "안내": ("info", "안내")}
 DISCLAIMER = "2022~2026학번 기준 · 최종 확인은 학과 사무실에서"
 PLACEHOLDER_DEPT = "학과를 선택하세요"
 GENERIC_DEPT = "목록에 없는 학과 (대학 공통 기준)"
 NO_AREA_NOTICE = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
-SUPPORT_LINE = "모든 학과가 규정 안내와 졸업요건 확인을 쓸 수 있어요. 교양·전공 영역별 계산은 경영 계열 학과만 지원해요."
 
 
 # ---------- 공통 ----------
@@ -121,15 +119,14 @@ def need_year(sc):
 
 def sidebar():
     sb = st.sidebar
-    sb.markdown('<div class="brand"><div class="brand-ico">🧭</div><div class="brand-name">졸업나침반</div></div>'
-                '<div class="brand-sub">5개 대학의 학사 규정을 근거로 답변해요</div>', unsafe_allow_html=True)
+    sb.markdown('<div class="brand"><div class="brand-ico"></div><div class="brand-name">졸업나침반</div></div>', unsafe_allow_html=True)
     pages = PAGES + ([DEV_PAGE] if is_dev() else [])
     cur = st.session_state.get("page", "home")
     if cur not in [p[0] for p in pages]:
         cur = st.session_state["page"] = "home"
-    for pid, label, icon in pages:
+    for pid, label in pages:
         with sb.container(key=f"navitem_{pid}" + ("__on" if pid == cur else "")):
-            st.button(label, key=f"nav_{pid}", icon=icon, on_click=goto, args=(pid,), width="stretch")
+            st.button(label, key=f"nav_{pid}", on_click=goto, args=(pid,), width="stretch")
     sb.markdown('<div class="side-h">내 정보</div>', unsafe_allow_html=True)
     univ = sb.selectbox("대학", UNIVS, key="univ")
     year_choice = sb.selectbox("학번(입학년도)", YEAR_CHOICES, format_func=lambda y: f"{y}학번" if isinstance(y, int) else y, key="year")
@@ -151,8 +148,7 @@ def sidebar():
             dept, dept_state = None, "generic"
         else:
             dept, dept_state = pick, "picked"
-    sb.caption(SUPPORT_LINE)
-    entry = sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
+    entry =sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
     transfer_grade = None
     if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
         transfer_grade = S.TRANSFER_DEFAULT_GRADE  # 편입 학년 선택은 두지 않고 3학년 기준으로 고정(우리 선택. 시행세칙Ⅰ 제63조 ②는 3·4학년 편입 허가)
@@ -167,7 +163,7 @@ def sidebar():
     if S.has_teacher_rows(univ):
         teacher = sb.checkbox("사범대학 소속 또는 교직이수자", key=f"teacher_{univ}")
     sb.divider()
-    sb.markdown('<div class="side-note">입력한 학점·평점은 저장하지 않아요.<br>질문 문장은 서비스 개선을 위해 기록돼요.</div>', unsafe_allow_html=True)
+    sb.markdown('<div class="side-note">질문 문장은 서비스 개선을 위해 기록돼요.</div>', unsafe_allow_html=True)
     year = year_choice if isinstance(year_choice, int) else (engine.OUT_OF_RANGE if year_choice == engine.OUT_OF_RANGE else None)
     return {"univ": univ, "year": year, "dept": dept, "dept_state": dept_state, "entry": entry, "teacher": teacher, "base": base, "transfer_grade": transfer_grade}
 
@@ -538,32 +534,6 @@ def courses_link_block(sc, stt):
             st.caption("편입생은 교양 영역별 결과가 참고용이라 교양 개설 과목 연결은 하지 않아요. 전공만 이어 드려요.")
 
 
-def card_remaining_home(sc):
-    """홈 카드: 입력 없이 졸업요건 요약이 먼저, 학점 계산은 선택(접기)"""
-    with st.container(key="card_home_rem"):
-        md('<div class="card-h">내 졸업요건</div>')
-        if not need_year(sc) or not need_dept(sc):
-            return
-        plan = plan_for(sc)
-        if plan["grad"] is None:
-            for n in plan["notes"]:
-                md(U.callout("warn", U.esc(n)))
-            return
-        ctx = ctx_of(sc)
-        generic_note(sc)
-        md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(plan["grad"]))}</b></div>')
-        rows, _ = basis_rows(plan)
-        if rows:
-            md('<div class="ck-src">' + U.esc(" · ".join(f"{n} {b}" for n, b in rows)) + "</div>")
-        show_checklist(sc, limit=2)
-        st.button("내 졸업요건 자세히 보기", key="home_to_rem", on_click=goto, args=("remaining",), width="stretch")
-        stt = remaining_state(sc, plan)
-        with st.expander("이수 학점을 알면 남은 학점도 계산해 드려요 (선택)", expanded=keep().get(f"tot|{ctx}") is not None):
-            num("지금까지 이수한 총 학점", f"tot|{ctx}", f"home_tot|{ctx}")
-            stt = remaining_state(sc, plan)
-            big_block(sc, stt)
-
-
 def page_remaining(sc):
     page_title("내 졸업요건", "정보만 고르면 졸업요건이 바로 보여요. 이수 학점을 알면 남은 학점도 계산해 드려요(선택).")
     if not need_year(sc) or not need_dept(sc):
@@ -672,26 +642,6 @@ def compare_conclusion_html(r):
                                       "전공학점만 비교한 거예요. 신청 자격·평점·교직 등은 따로 확인하세요.")
         return U.callout("concl", "두 선택의 전공학점 합이 같아요.")
     return U.callout("warn", "한쪽의 주전공 요구 학점이 학과별로 달라 기준표에 없어서, 합을 비교하지 않았어요(학과 확인 필요).")
-
-
-def card_compare_home(sc):
-    with st.container(key="card_home_cmp"):
-        md('<div class="card-h">학사 선택 비교</div>')
-        if not need_year(sc) or not need_dept(sc):
-            return
-        r = S.compare(sc["univ"], sc["year"], sc["dept"])
-        if not r["ok"]:
-            md(U.callout("warn", "이 조건의 부전공·복수(다)전공 학점을 기준표에서 확인하지 못했어요(확인 불가). " + U.esc(r.get("why") or "")))
-            return
-        md(compare_table_html(r))
-        md(compare_conclusion_html(r))
-        if r.get("floor_note"):
-            md(U.callout("info", U.esc(r["floor_note"])))
-        md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
-        if S.explain_question(sc["univ"], sc["year"], sc["dept"]):  # 설명 질문이 만들어지는 조건에서만(한남 2023~·목원 등)
-            st.button("AI 설명 듣기", key="home_to_cmp", on_click=goto, args=("compare",), width="stretch")
-        else:
-            st.button("비교 자세히 보기", key="home_to_cmp", on_click=goto, args=("compare",), width="stretch")
 
 
 def page_compare(sc):
@@ -870,12 +820,6 @@ def page_courses(sc):
 
 # ---------- 홈·규정 안내 ----------
 
-def go_calc():
-    """홈 ③: 내 졸업요건 페이지로 이동하고, 선택 영역(학점 계산)으로 스크롤하도록 표시해 둔다(스크롤은 가능할 때만)"""
-    keep()["scroll_to"] = "card_rem_main"
-    st.session_state["page"] = "remaining"
-
-
 def scroll_script(key):
     """st.container(key=...) 위치로 부드럽게 스크롤(브라우저에서만 동작하는 보조 기능, 실패해도 페이지 이동은 그대로).
     우리가 만든 고정 문자열만 st.iframe에 넣는다(사용자 입력은 넣지 않는다)."""
@@ -886,61 +830,49 @@ def scroll_script(key):
         pass
 
 
-def home_steps():
-    """맨 위 3단계 흐름(상자 없이 한 줄, 좁은 화면에서는 세로). ① 안내 ② 졸업요건 보기 ③ 남은 학점 계산(선택)"""
-    with st.container(key="steps_row"):
-        c1, a1, c2, a2, c3 = st.columns([10, 1, 10, 1, 10], vertical_alignment="top")
-        with c1:
-            md('<div class="step-label">① 내 정보 고르기</div><div class="step-txt">왼쪽에서 내 정보를 골라요</div>')
-        with a1:
-            md('<div class="step-arrow">→</div>')
-        with c2:
-            md('<div class="step-label">② 졸업요건 보기</div>')
-            st.button("내 졸업요건 보기", key="step_req", on_click=goto, args=("remaining",), width="stretch")
-        with a2:
-            md('<div class="step-arrow">→</div>')
-        with c3:
-            md('<div class="step-label">③ 남은 학점 계산 (선택)</div>')
-            st.button("남은 학점 계산하기", key="step_calc", on_click=go_calc, width="stretch")
+HOME_STEPS = [
+    (1, True, "왼쪽에서 내 정보를 골라요", "대학·학번·학과·입학 구분을 골라요. 편입생은 편입 연도보다 2년 앞 학번을 골라요.", "", None),
+    (2, True, "내 졸업요건을 확인해요", "학점을 몰라도 돼요. 졸업학점, 영역별 기준, 학점 말고 필요한 요건이 먼저 보여요.", "", ("내 졸업요건 보기 →", "remaining")),
+    (3, False, "이수 학점을 넣으면 남은 학점이 보여요", "포털의 졸업사정 메뉴(배재대는 '졸업자가진단')에서 이수 학점을 확인할 수 있어요.", "선택", None),
+    (4, False, "부족한 영역의 이번 학기 과목을 찾아요", "2026-2학기 개설 과목을 영역과 요일로 찾아볼 수 있어요.", "배재대", None),
+]
+HOME_SITUATIONS = [
+    ("부전공이랑 복수전공 중에 뭐가 덜 힘들지?", "학사 선택 비교 →", "compare"),
+    ("휴학은 몇 학기까지 되지? 재수강은?", "규정 질문 →", "ask"),
+    ("편입하면 몇 학점 인정받고, 뭘 더 들어야 하지?", "규정 질문 →", "ask"),
+]
 
 
-def page_home(sc):
-    home_steps()
-    c1, c2, c3 = st.columns(3, gap="medium")
-    with c1:
-        card_remaining_home(sc)
-    with c2:
-        with st.container(key="card_home_ask"):
-            md('<div class="card-h">학사 규정 질문</div>')
-            hist = qa_block(sc, "home", compact=True)
-            if hist:
-                show_history(hist, "h", compact=True)
-                st.button("규정 안내에서 이어서 보기", key="home_to_ask", on_click=goto, args=("ask",), width="stretch")
-    with c3:
-        card_compare_home(sc)
-    card_courses(sc)
-    support_table()
-
-
-def support_table():
-    """지원 범위 표(기능 × 경영 계열/그 외 학과). 영역별 계산 지원 대학은 area_plan 단계로 확인한 값이다(배재·충남·목원 T1/T2, 한남·한밭 T3)."""
-    with st.container(key="card_support"):
-        md('<div class="card-h">지원 범위</div>')
-        md(U.table(["기능", "경영 계열 학과", "그 외 학과"], [
-            ["규정 안내", "지원", "지원"],
-            ["졸업요건 확인 (학점 입력 없이)", "지원", "지원"],
-            ["남은 학점 계산 (선택)", "지원", "지원"],
-            ["학점 외 요건", "지원", "지원"],
-            ["영역별 남은 학점", "지원 (각주 1)", "지원 안 함"],
-            ["학사 선택 비교", "지원", "일부 (각주 2)"],
-            ["이번 학기 개설 과목", "배재대만 (각주 3)", "배재대 교양만 (각주 3)"],
-        ]))
-        md('<div class="ck-src">1) 한남·한밭은 경영 계열도 영역별 계산이 없고 총 학점만 계산해요. '
-           '2) 학과마다 주전공 학점이 달라 기준표에 없으면 "학과 확인 필요"로 안내해요. 3) 배재대 IT경영정보학과 전공과 교양을 지원하고, 다른 대학은 준비 중이에요.</div>')
+def page_home():
+    """시작하기: 서비스 소개와 쓰는 순서만 보여 준다. 계산·질문은 각 메뉴에서 하고, 여기서는 이동 버튼만 둔다."""
+    md('<div class="hero"><div class="hero-ico"></div><div><div class="hero-title">졸업나침반 시작하기</div>'
+       '<div class="hero-sub">대전 5개 대학의 졸업요건을, 학칙·세칙 근거와 함께 확인하는 곳이에요.</div></div></div>')
+    md('<div class="home-h">이렇게 써 보세요</div>')
+    for n, filled, title, desc, tag, btn in HOME_STEPS:
+        with st.container(key=f"hstep_{n}"):
+            tag_html = f'<span class="stp-tag">{U.esc(tag)}</span>' if tag else ""
+            md(f'<div class="stp"><div class="stp-no{" on" if filled else ""}">{n}</div>'
+               f'<div><div class="stp-t">{U.esc(title)}{tag_html}</div><div class="stp-d">{U.esc(desc)}</div></div></div>')
+            if btn:  # 설명 바로 아래 줄, 글자 시작 위치에 맞춤(CSS)
+                st.button(btn[0], key="go_req", type="tertiary", on_click=goto, args=(btn[1],))
+    md('<div class="home-h">이럴 때 쓰세요</div>')
+    for i, (q, label, page) in enumerate(HOME_SITUATIONS, 1):
+        with st.container(key=f"hsit_{i}"):
+            left, right = st.columns([7, 2], vertical_alignment="center")
+            with left:
+                md(f'<div class="sit-q">“{U.esc(q)}”</div>')
+            with right:
+                st.button(label, key=f"go_sit_{i}", type="tertiary", on_click=goto, args=(page,))
+    md('<div class="home-h">알아 두세요</div>')
+    md('<div class="note-box"><ul>'
+       "<li>답마다 [1]처럼 근거 조항이 붙어요. '근거 보기'에서 규정명·조항·쪽을 볼 수 있어요.</li>"
+       f"<li>규정에서 못 찾은 건 지어내지 않고 {U.badge('warn', '확인 불가')}로 알려 줘요.</li>"
+       "<li>2022~2026학번 기준이에요. 최종 확인은 학과 사무실에서 하세요. 입력한 학점은 저장하지 않아요.</li>"
+       "</ul></div>")
 
 
 def page_ask(sc):
-    page_title("학사 규정 안내", "학칙·세칙·편람을 근거로 답하고, 근거를 함께 보여 줘요. 확인되지 않은 내용은 '확인 불가'로 알려 드려요.")
+    page_title("규정 질문", "학칙·세칙·편람을 근거로 답하고, 근거를 함께 보여 줘요. 확인되지 않은 내용은 '확인 불가'로 알려 드려요.")
     with st.container(key="card_ask_main"):
         hist = qa_block(sc, "ask")
         show_history(hist, "a")
@@ -968,9 +900,10 @@ def page_dev():
 
 
 def route(sc):
-    header(sc)
     page = st.session_state.get("page", "home")
     if page == "dev" and not is_dev():
         page = "home"
-    {"home": lambda: page_home(sc), "ask": lambda: page_ask(sc), "remaining": lambda: page_remaining(sc), "compare": lambda: page_compare(sc),
-     "courses": lambda: page_courses(sc), "dev": page_dev}.get(page, lambda: page_home(sc))()
+    if page != "home":
+        header(sc)
+    {"home": page_home, "ask": lambda: page_ask(sc), "remaining": lambda: page_remaining(sc), "compare": lambda: page_compare(sc),
+     "courses": lambda: page_courses(sc), "dev": page_dev}.get(page, page_home)()
