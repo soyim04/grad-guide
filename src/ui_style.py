@@ -93,6 +93,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:.95rem;margin:.4rem 0;}
 table.tbl th{background:var(--soft);color:var(--ink);text-align:left;padding:.5rem .6rem;font-weight:700;}
 table.tbl td{padding:.5rem .6rem;border-bottom:1px solid var(--line);vertical-align:top;}
 table.tbl td.tot{font-weight:800;color:var(--pt);}
+table.tbl td.sub{padding-left:1.7rem;}
+table.tbl tr.subrow td{font-size:.9rem;}
 
 /* 질문·답 */
 .q-line{font-weight:800;font-size:1.02rem;margin:.6rem 0 .3rem;}
@@ -163,11 +165,12 @@ def bignum(label, value, unit="학점"):
     return f'<div class="bignum-label">{esc(label)}</div><div class="bignum">{esc(value)}<small>{esc(unit)}</small></div>'
 
 
-def table(headers, rows, total_col=None):
-    """rows: 문자열 리스트의 리스트. total_col: 강조할 열 번호"""
+def table(headers, rows, total_col=None, levels=None):
+    """rows: 문자열 리스트의 리스트. total_col: 강조할 열 번호. levels: 행마다 들여쓰기 단계(0=상위, 1=하위. 첫 칸만 들여씀)"""
     th = "".join(f"<th>{esc(h)}</th>" for h in headers)
     body = ""
-    for r in rows:
-        tds = "".join(f'<td class="tot">{esc(c)}</td>' if i == total_col else f"<td>{esc(c)}</td>" for i, c in enumerate(r))
-        body += f"<tr>{tds}</tr>"
+    for k, r in enumerate(rows):
+        sub = bool(levels and levels[k])
+        tds = "".join(f'<td class="tot">{esc(c)}</td>' if i == total_col else (f'<td class="sub">{esc(c)}</td>' if sub and i == 0 else f"<td>{esc(c)}</td>") for i, c in enumerate(r))
+        body += f'<tr class="subrow">{tds}</tr>' if sub else f"<tr>{tds}</tr>"
     return f'<table class="tbl"><thead><tr>{th}</tr></thead><tbody>{body}</tbody></table>'

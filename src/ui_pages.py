@@ -426,24 +426,67 @@ KIDS_GUIDE = {"배재": "영역별 학점은 학교 포털 '졸업자가진단'�
 KIDS_GUIDE_DEFAULT = "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요."
 
 
-def basis_rows(plan):
-    """입력 없이 보여 줄 영역 기준: (영역 표 행, 세부 항목 줄). 영역별 계산을 지원하면 영역·세부 항목, 한남·한밭은 기준표의 영역별 기준 그대로"""
+SINGLE_NOTE = "복수전공·부전공을 하지 않을 때(단수전공) 기준이에요."
+
+
+def _pct_example(row, grad):
+    """%로 정해진 기준은 졸업학점으로 계산한 예시를 붙인다: 졸업학점의 25% 이상 (130학점이면 32.5학점). 소수 그대로"""
+    base = S.fmt_basis(row)
+    try:
+        g, v = float(grad["값"]), float(row["값"])
+    except (TypeError, ValueError):
+        return base
+    if row["단위"] != "%":
+        return base
+    return f"{base} ({g:g}학점이면 {round(g * v / 100, 4):g}학점)"
+
+
+def basis_entries(plan):
+    """영역 기준 표의 행: [{name, basis, level}]와 부가 정보 {note(단수 안내), sums[] ('전공 72학점 이상 = 기본전공 + 심화전공')}.
+    상위·하위: T1/T2는 영역 아래에 세부 항목, T3는 전공 아래에 기본전공·심화전공(같은 이수유형). 이수유형이 모두 단수면 '(단수)'를 이름에서 빼고 표 위에 한 줄로 알린다."""
+    grad = plan["grad"]
+    items = []  # (이름, 행, 수준)
     if plan["tier"] in ("T1", "T2"):
-        rows = [[a["name"], S.fmt_basis(a["row"])] for a in plan["areas"]]
-        kids = [f"{CR.item_label(c['항목'])} {S.fmt_basis(c)}" for a in plan["areas"] for c in a["children"]]
-        return rows, kids
-    if plan["tier"] == "T3":
-        return [[r["항목"] + (f" ({r['이수유형']})" if r["이수유형"] else ""), S.fmt_basis(r)] for r in plan["ref_rows"]], []
-    return [], []
+        for a in plan["areas"]:
+            items.append((a["name"], a["row"], 0))
+            for c in a["children"]:
+                items.append((CR.item_label(c["항목"]), c, 1))
+    elif plan["tier"] == "T3":
+        refs = plan["ref_rows"]
+        parents = {(r["항목"], r["이수유형"]) for r in refs}
+        for r in refs:
+            child = r["항목"] in ("기본전공", "심화전공") and ("전공", r["이수유형"]) in parents
+            if child:
+                continue
+            items.append((r["항목"], r, 0))
+            if r["항목"] == "전공":
+                items += [(c["항목"], c, 1) for c in refs if c["항목"] in ("기본전공", "심화전공") and c["이수유형"] == r["이수유형"]]
+    single = bool(items) and all(r["이수유형"] in ("", "단수") for _, r, _ in items)
+    out, sums = [], []
+    for name, r, lv in items:
+        label = name + (f" ({r['이수유형']})" if r["이수유형"] and r["이수유형"] != "단수" and plan["tier"] == "T3" and not (single) else "")
+        if plan["tier"] == "T3" and r["이수유형"] == "단수" and not single:
+            label = f"{name} (단수)"
+        out.append({"name": label, "basis": _pct_example(r, grad) if grad else S.fmt_basis(r), "level": lv})
+        if lv == 0 and r["항목"] == "전공" and any(i[2] == 1 and i[1]["항목"] in ("기본전공", "심화전공") for i in items):
+            sums.append(f"전공 {S.fmt_value(r)} = 기본전공 + 심화전공의 합이에요.")
+    return out, {"note": SINGLE_NOTE if single else "", "sums": sums}
+
+
+def basis_rows(plan):
+    """홈 카드 한 줄 요약용 상위 행만: [[이름, 기준]]와 빈 목록(호환용). 세부 항목은 표에서 들여써서 보여 준다"""
+    entries, _ = basis_entries(plan)
+    return [[e["name"], e["basis"]] for e in entries if e["level"] == 0], []
 
 
 def basis_html(plan):
-    rows, kids = basis_rows(plan)
-    if not rows:
+    entries, extra = basis_entries(plan)
+    if not entries:
         return ""
-    out = U.table(["영역", "기준"], rows)
-    if kids:
-        out += details_html([U.esc(k) for k in kids], label="세부 항목 보기")
+    out = f'<div class="ck-src">{U.esc(extra["note"])}</div>' if extra["note"] else ""
+    out += U.table(["영역", "기준"], [[e["name"], e["basis"]] for e in entries], levels=[e["level"] for e in entries])
+    for sline in extra["sums"]:
+        out += f'<div class="ck-src">{U.esc(sline)}</div>'
     return out
 
 

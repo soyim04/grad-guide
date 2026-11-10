@@ -280,13 +280,13 @@ def cmd_logic():
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙
-    for u, arts in (("배재", ("제17조 ⑦", "제63조 ②", "제64조 ④")), ("한남", ("제12조", "제20조의2"))):
+    for u, arts in (("배재", ("제17조 ⑦", "제63조 ②", "제64조 ④")), ("한남", ("제12조", "제20조의2")), ("한밭", ("졸업요건 웹페이지", "등급 C", "2021학년도 이후 편입생"))):
         n = S.transfer_note(u)
         check(f"편입 안내 {u}: 한 줄(2년 앞 학번·2023학번 예시), 근거 접기에 3학년 편입 기준·조문·해석 명시, '4학년 24학점' 문구 없음",
               n["text"] == "편입생은 2년 앞 학번을 고르세요. (예: 2025년 편입 → 2023학번)" and any("3학년 편입 기준이에요. 그 외 학년은 학과에 확인하세요." == b for b in n["basis"])
-              and all(any(a in b for b in n["basis"]) for a in arts) and any("해석" in b for b in n["basis"]) and "24학점" not in n["text"] + "".join(n["basis"]), str(n)[:120])
-    check("편입 안내 한밭·충남·목원: 한 줄 '적용 학번을 학과에서 확인하세요' + 근거 없음",
-          all(S.transfer_note(u) == {"text": S.TRANSFER_CHECK_LINE, "basis": []} for u in ("한밭", "충남", "목원")))
+              and all(any(a in b for b in n["basis"]) for a in arts) and any(("해석" in b) or (u == "한밭" and "학과에 확인하세요" in b) for b in n["basis"]) and "24학점" not in n["text"] + "".join(n["basis"]), str(n)[:120])
+    check("편입 안내 충남·목원: 한 줄 '적용 학번을 학과에서 확인하세요' + 근거 없음",
+          all(S.transfer_note(u) == {"text": S.TRANSFER_CHECK_LINE, "basis": []} for u in ("충남", "목원")))
     for u, y, d, q, want in (("배재", 2025, "IT경영정보학과", "혁신교육과미래설계 꼭 들어야 해?", ["0학점 이수 필수"]),
                              ("목원", 2024, "경영학부", "체험교과목 이수해야 해?", ["체험교과목"]),
                              ("충남", 2024, "경영학부", "졸업 평점은 몇 점이야?", ["졸업 평점"]),
@@ -727,7 +727,9 @@ def cmd_app():
         # 사이드바 편입 안내: 학교별, 신입이면 없음
         at = pick(run(), "한남", 2023, "편입")
         check("화면: 한남 편입 안내('2년 앞 학번')·근거 접기 있음", "2년 앞 학번" in texts(at.sidebar.info) and len([x for x in at.sidebar.expander if x.label == "근거 보기"]) == 1, texts(at.sidebar.info)[:60])
-        for u in ("한밭", "충남", "목원"):  # 사이드바 한 줄만, 근거 접기 없음, 남은 학점·홈 화면에는 중복 줄 없음
+        at = pick(run(), "한밭", 2023, "편입")
+        check("화면: 한밭 편입 안내('2년 앞 학번')·근거 접기(웹페이지 C등급) 있음", "2년 앞 학번" in texts(at.sidebar.info) and len([x for x in at.sidebar.expander if x.label == "근거 보기"]) == 1, texts(at.sidebar.info)[:60])
+        for u in ("충남", "목원"):  # 사이드바 한 줄만, 근거 접기 없음, 남은 학점·홈 화면에는 중복 줄 없음
             at = pick(run(), u, 2023, "편입")
             side = texts(at.sidebar.info)
             nav(at, "remaining")
@@ -851,6 +853,18 @@ def cmd_app():
         at = nav(pick(run(), "한밭", 2024, "신입"), "remaining")
         h = html(at)
         check("화면: [E19] 한밭 교양은 '졸업학점의 25% 이상'(단위가 보임), 단독 '25% 이상' 칸 없음", "졸업학점의 25% 이상" in h and "<td>25% 이상</td>" not in h)
+        # [2] 영역 기준 표 화면: 단수 안내 한 줄, (단수) 제거, 상위·하위 들여쓰기, 전공 합 한 줄, % 예시(소수 그대로)
+        check("화면: [2] 한밭 표 위에 '복수전공·부전공을 하지 않을 때(단수전공) 기준이에요.' 한 줄, 이름 뒤 '(단수)' 없음",
+              "복수전공·부전공을 하지 않을 때(단수전공) 기준이에요." in h and "(단수)" not in h)
+        check("화면: [2] 한밭 기본전공·심화전공은 전공 아래 들여쓰기(class sub), '전공 72학점 이상 = 기본전공 + 심화전공' 한 줄",
+              '<td class="sub">기본전공</td>' in h and '<td class="sub">심화전공</td>' in h and '<td>전공</td>' in h and "전공 72학점 이상 = 기본전공 + 심화전공" in h)
+        check("화면: [2] 한밭 % 기준은 계산 예시 '졸업학점의 25% 이상 (130학점이면 32.5학점)'(올림 없음)", "졸업학점의 25% 이상 (130학점이면 32.5학점)" in h and "33학점" not in h)
+        for u_, y_, kid in (("배재", 2023, "전공필수"), ("충남", 2024, "전공핵심"), ("목원", 2024, "교양필수")):
+            h2 = html(nav(pick(run(), u_, y_, "신입"), "remaining"))
+            check(f"화면: [2] {u_} {y_} 세부 항목({kid})도 영역 아래 들여쓰기, 단수 안내 한 줄", f'<td class="sub">{kid}</td>' in h2 and "복수전공·부전공을 하지 않을 때(단수전공) 기준이에요." in h2)
+        h3 = html(nav(pick(run(), "한남", 2024, "신입"), "remaining"))
+        check("화면: [2] 한남은 융합 유형이 같이 있어 이름 뒤 이수유형(단수·융합…)을 그대로 두고 단수 안내 한 줄은 없음",
+              "교양 (단수)" in h3 and "전공 (융합전공)" in h3 and "복수전공·부전공을 하지 않을 때" not in h3)
         at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
         e = [x for x in at.expander if x.label == "내 이수 학점은 어디서 보나요?"]
         check("화면: [E19] 배재 이수 학점 안내(졸업자가진단·소계), 목원은 졸업사정(졸업 자가진단) 안내", len(e) == 1 and "졸업자가진단" in texts(e[0].markdown) and "소계" in texts(e[0].markdown)
