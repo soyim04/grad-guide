@@ -290,6 +290,35 @@ def has_teacher_rows(univ):
 _REF_PAREN = re.compile(r"\s*[\(（][^()（）]*(?:제\s*\d+\s*조|개정|신설|부칙|\d{4}\.\s?\d)[^()（）]*[\)）]")
 
 
+# ---- E24d: 화면에 보여 줄 글에서 개발용 표기를 지운다(criteria.csv 원본·프롬프트·저장 답은 그대로, 화면 출력만) ----
+_ID = r"(?:BJ|MW|HB|HN|CN)-\d{3}"
+_ID_RE = re.compile(_ID)
+# 문장 전체가 내부 메모인 것: 평가셋 번호·기준표 작성 메모·스키마 규칙·실험 번호·'이 행'·시작 비움 등
+_INTERNAL_SENT = re.compile(r"평가셋|시작 비움|criteria|스키마|규칙 ?\d{1,2}|E\d{1,2}[a-d]?|이 행|이 열|사용자|이미지 대조|잠정으로 넣")
+
+
+def strip_ids(text):
+    """행 ID(BJ-040 등) 표기를 지운다. '(기준표 BJ-016)'·'(BJ-034)'처럼 괄호에 ID만 든 것은 괄호째, '(0.5학점×2, BJ-033)'은 ID만, '행 BJ-050'은 '행'까지."""
+    t = str(text)
+    t = re.sub(rf"\(\s*(?:기준표\s*|행\s*)?{_ID}(?:\s*[,·]\s*{_ID})*\s*\)", "", t)  # 괄호 안에 ID만
+    t = re.sub(rf"\s*(?:근거\s*)?행\s*:?\s*{_ID}(?:\s*[,·]\s*{_ID})*", "", t)  # '행 BJ-050'·'근거 행: …'
+    t = re.sub(rf"(?:기준표\s*)?{_ID}(?:\s*[,·]\s*{_ID})+", "", t)  # ID 나열
+    t = re.sub(rf"\s*,\s*{_ID}(?=\s*\))", "", t)  # '(…, BJ-033)'
+    t = re.sub(rf"(?:기준표\s*)?`?{_ID}`?\s*[·:]?\s*", "", t)  # 남은 ID 하나(뒤의 · 구분자까지)
+    t = re.sub(r"\(\s*\)", "", t)
+    t = re.sub(r"[ 	]{2,}", " ", t)
+    t = re.sub(r"\s+([,.)])", r"", t)
+    return t.strip()
+
+
+def display_note(text):
+    """기준표 비고를 화면에 보일 때: 내부 메모 문장(평가셋 번호·시작 비움·규칙 번호 등)은 문장째 지우고 행 ID도 지운다.
+    학생에게 필요한 안내 문장(예: '부전공 없이 단수 54는 선택 불가(융합교육 필수)')은 그대로 둔다."""
+    sents = re.split(r"(?<=[.。])\s+", str(text).strip())
+    kept = [s for s in sents if not _INTERNAL_SENT.search(s)]
+    return strip_ids(" ".join(kept)).strip()
+
+
 def plain_text(text):
     """체크리스트 본문은 쉬운 말 한 문장만: 조항·개정 이력·부칙이 든 괄호를 뺀다(바깥 괄호 안에 괄호가 든 경우까지 되풀이). 반환: (본문, 뺀 문구들)
     뺀 문구는 `근거 보기`로 보내고, 조항명은 출처 줄이 한 번 보여 준다."""
@@ -318,7 +347,7 @@ def checklist(univ, year, dept, entry="신입", teacher=False, transfer_grade=No
         elif r["상태"] == "확인불가" or not r["값"]:
             add("졸업 평점", "확인불가", "졸업 최저 평점을 규정에서 확인하지 못했어요(확인 불가).", r)
         else:
-            add("졸업 평점", "요건", f"졸업하려면 전체 평점평균 {float(r['값']):.2f}점 이상이 필요해요.", r, r["비고"] if "의예과" in r["비고"] else "")
+            add("졸업 평점", "요건", f"졸업하려면 전체 평점평균 {float(r['값']):.2f}점 이상이 필요해요.", r, display_note(r["비고"]) if "의예과" in r["비고"] else "")
     for r in _pick_rows(univ, dept, year, "공학인증_안내"):  # E26: 한남 공학교육인증 운영학과 안내(상태 잠정, 본문은 조건 칸)
         add("공학교육인증", "안내", r["조건"], r)
     seen = set()
@@ -388,7 +417,7 @@ def _one(univ, dept, year, item):
         return None, f"행이 {len(rows)}개라 하나로 정할 수 없어요"
     r = rows[0]
     if r["상태"] in ("확인불가", "없음") or not re.fullmatch(r"\d+(\.\d+)?", r["값"] or ""):
-        return None, f"{r['행ID']}의 값을 확인할 수 없어요(상태 {r['상태']})"
+        return None, f"기준표 값을 확인할 수 없어요(상태 {r['상태']})"
     return r, ""
 
 
@@ -418,7 +447,7 @@ def compare(univ, year, dept):
     floor_note = ("범위로 정해진 값은 가장 작은 값(최저값) 기준으로 더했어요. 학과 확인 필요."
                   if any(r["값_최대"] for r in rows) else "")
     return {"ok": True, "full": full, "floor_note": floor_note, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,
-            "notes": [r["비고"] for r in rows if "선택 불가" in r["비고"]],
+            "notes": [n for n in (display_note(r["비고"]) for r in rows if "선택 불가" in r["비고"]) if n],
             "question": compare_question(univ, year, dept), "department_hint": dept}
 
 

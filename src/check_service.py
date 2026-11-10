@@ -435,6 +435,18 @@ def cmd_logic():
     check("E26c: 한남 코스메틱사이언스학과(정원외 외국인 전담학과)는 어느 학번 기준표 대상에도 없고 학과 선택지에도 없다(연계·융합전공 이름은 학과가 아니라 해당 없음)",
           not any("코스메틱" in t_ for r_ in L.CRITERIA if r_["대학"] == "한남" for t_ in L.targets_of(r_))
           and all("코스메틱사이언스학과" not in sum(S.dept_choices("한남", y_), []) for y_ in range(2022, 2027)))
+    # 1-1n. E24d: 화면용 정리 함수(display_note·strip_ids) — criteria.csv 원본·프롬프트용 clean_note는 그대로
+    hn026_ = L.BY_ID["HN-026"]["비고"]
+    check("E24d: display_note — 평가셋·내부 메모 문장은 지우고 학생용 안내('부전공 없이 단수 54는 선택 불가(융합교육 필수)')는 남긴다",
+          S.display_note(hn026_) == "주전공 45 + 부전공 21 = 66. 부전공 없이 단수 54는 선택 불가(융합교육 필수)." and "평가셋" in hn026_)
+    SI_ = {"비전설계 영역에서 1과목(3학점)을 이수해요(기준표 BJ-016).": "비전설계 영역에서 1과목(3학점)을 이수해요.",
+           "전공융합설계 9학점 이상(BJ-034), 비전설계 3학점(BJ-035)예요.": "전공융합설계 9학점 이상, 비전설계 3학점예요.",
+           "전공탐색(0.5학점×2, BJ-033)은 없어요": "전공탐색(0.5학점×2)은 없어요", "남았어요. 행 BJ-050": "남았어요.",
+           "근거 행: HN-026, HN-020": "", "`HB-001` · 이수 방식 단수": "이수 방식 단수", "부전공은 54학점(HN-026)이에요.": "부전공은 54학점이에요."}
+    check("E24d: strip_ids — 괄호에 ID만 든 것은 괄호째, '(…, ID)'는 ID만, '행 ID'·'근거 행: …'·코드 서식 ID는 지운다", all(S.strip_ids(k_) == v_ for k_, v_ in SI_.items()), str([(k_, S.strip_ids(k_)) for k_, v_ in SI_.items() if S.strip_ids(k_) != v_]))
+    leak_rows_ = [r_["행ID"] for r_ in L.CRITERIA if re.search(r"평가셋|(?:BJ|MW|HB|HN|CN)-\d{3}|시작 비움", S.display_note(r_["비고"]))]
+    check("E24d: 기준표 모든 행의 비고가 display_note를 거치면 평가셋·행 ID·'시작 비움'이 남지 않는다(원본 criteria.csv 비고는 그대로: 평가셋 28행)",
+          not leak_rows_ and sum(1 for r_ in L.CRITERIA if "평가셋" in r_["비고"]) == 28, str(leak_rows_[:5]))
     # 1-1m. E24b: 사이드바 학과 목록(학번별 · 묶음 행은 학과 하나하나 · 대체 선택지는 따로)
     DEPT_KNOWN_NO_GRAD = {("충남", "약학과")}  # 졸업학점 행이 둘(168·232, 원문 구분 설명 없음)이라 하나로 안 풀림: 선택은 되고 화면이 확인 불가를 안내
     bad_dc = []
@@ -741,9 +753,17 @@ def cmd_app():
 
     class Fake:
         badge = True
+        leak = False  # E24d: True면 답 본문에 행 ID를 적고 잠정·학과확인필요 배지에 rids를 달아 화면 정리를 시험한다
 
         def answer(self, q, univ=None, year=None, dept=None):
             calls.append((q, univ, year, dept))
+            if Fake.leak:
+                return {"answer": "부전공은 54학점(HN-026)이에요. 근거는 [1] 입니다.\n\n자세한 설명이에요(기준표 HN-020).", "tail": "", "sources": [
+                    {"kind": "기준표", "id": "HN-001", "nums": [1], "title": "한남 기준표 · 졸업학점", "target": "전체", "value": "120학점 이상", "status": "확정",
+                     "article": "학칙 제41조", "pages": "20", "grade": "A 규정 원문"}],
+                    "badges": [{"kind": "잠정", "text": "이 값은 잠정이에요 (학과 확인)", "rids": ["HN-026"]}, {"kind": "학과확인필요", "text": "출처마다 값이 달라요 (학과 확인)", "rids": ["HN-020", "HN-024"]}],
+                    "route": "조회", "cost_usd": 0.001, "latency_ms": 900, "question_used": "한남대 학생: " + q, "used_dept": False, "calc_text": "54+21=75 (HN-026)",
+                    "tokens_in": 1, "tokens_out": 1, "embed_tokens": 1}
             body = "첫 문단이에요. " * 10 + "\n\n" + "둘째 문단 자세한 설명이에요. " * 25
             return {"answer": body, "tail": "출처: [1] 학칙", "sources": [
                 {"kind": "기준표", "id": "HN-001", "nums": [1], "title": "한남 기준표 · 졸업학점", "target": "전체", "value": "120학점 이상", "status": "확정",
@@ -876,7 +896,7 @@ def cmd_app():
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(48)
         at.run()
         check("화면: [E15] 배재 편입 영역 입력 후에도 큰 숫자는 5, 영역별 합은 전공을 편입 기준 45로 계산해 31(교양 31 + 전공 0)", big(at) == "5" and area_sum(at) == "31" and expander(at, "영역별 결과 (참고)") is not None, f"{big(at)} {area_sum(at)}")
-        check("화면: [E15] 전공 입력이 기준 45를 넘으면 '전공 기준 45학점 중 0학점 남았어요'(행 BJ-049)", "전공 기준 <b>45학점</b> 중 <b>0학점</b> 남았어요" in html(at) and "BJ-049" in html(at), html(at)[-200:])
+        check("화면: [E15] 전공 입력이 기준 45를 넘으면 '전공 기준 45학점 중 0학점 남았어요'(행 ID는 일반 모드에서 안 보임, E24d)", "전공 기준 <b>45학점</b> 중 <b>0학점</b> 남았어요" in html(at) and "BJ-049" not in html(at), html(at)[-200:])
         ref = expander(at, "참고")
         rt = texts(ref.markdown) if ref else ""
         check("화면: [E15] 편입 '참고'에는 편입 전공 기준 안내가 있고, 영역 미지정 학점(28) 안내는 없다(교양 표 불일치 34↔36은 교양 기준이 그대로라 남음)", "편입 전공 기준" in rt and "28학점" not in rt and "전공 세부 항목" not in rt, rt[:120])
@@ -907,8 +927,8 @@ def cmd_app():
         at.number_input(key="done|배재|2023|IT경영정보학과|전공").set_value(40)
         at.run()
         h = html(at)
-        check("화면: [E15] 배재 2023 편입(3학년 고정) 총 126 → 남은 4, 전공 기준 45 중 5 남음(BJ-049), 인정학점 상한 65(BJ 130·3학년)",
-              big(at) == "4" and "전공 기준 <b>45학점</b> 중 <b>5학점</b> 남았어요" in h and "BJ-049" in h and "최대 65학점" in h, h[-260:])
+        check("화면: [E15] 배재 2023 편입(3학년 고정) 총 126 → 남은 4, 전공 기준 45 중 5 남음, 인정학점 상한 65(130·3학년), 행 ID 없음(E24d)",
+              big(at) == "4" and "전공 기준 <b>45학점</b> 중 <b>5학점</b> 남았어요" in h and "BJ-049" not in h and "최대 65학점" in h, h[-260:])
         check("화면: [E15] 체크리스트에 편입 요건(면제 안내·인성 이수·학사편입 안내)이 배지로, 채플(2학년 전용)은 화면에 없다",
               "편입 전 필수과목 면제" in h and "b-info" in h and "기독교정신과아펜젤러인성 이수" in h and "편입 후 전공필수 이수" in h and "학사편입" in h and "채플" not in h and "✅" not in h, h[:60])
         check("화면: [E17b] 2학년·4학년 기준 값(상한 33·98, 전공 24)은 화면에 나오지 않는다(안내 문구의 '전공 24학점' 제외)",
@@ -1047,7 +1067,7 @@ def cmd_app():
             h2 = html(at2)
             can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
             ok2 = r["ok"] and all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and (not r["less"] or (r["less"] in h2 and f"{r['diff']:g}학점" in h2)) \
-                and "근거 행" in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
+                and "근거 행" not in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok2, h2[:60])
         # ---- E19b 홈 3단계 버튼 · 세부 항목 표시 이름 ----
         at = pick(run(), "배재", 2023, "신입")
@@ -1148,6 +1168,54 @@ def cmd_app():
             at = nav(pick(run(), "배재", 2023, "신입"), "courses")
             h = html(at)
             check("화면: [E19] 개설 과목 목록에 약어 툴팁(전필·전선 title)과 영역 선택 도움말", 'title="전공필수">전필</abbr>' in h and 'title="전공선택">전선</abbr>' in h and "전필=전공필수" in " ".join(str(x.help) for x in at.selectbox))
+        # E24d: 개발용 표기(평가셋·행 ID·'시작 비움')는 일반 모드 화면 어디에도 안 나오고, ?dev=1에서만 나온다
+        LEAK_RE = re.compile(r"평가셋|(?:BJ|MW|HB|HN|CN)-\d{3}|시작 비움|근거 행")
+
+        def screen_text(at_):
+            parts = [html(at_)] + [texts(getattr(at_, k_)) for k_ in ("info", "warning", "error", "success", "text")]
+            parts += [texts(at_.sidebar.info), texts(at_.sidebar.caption), texts(at_.sidebar.markdown)]
+            for d_ in at_.dataframe:
+                try:
+                    parts.append(d_.value.to_csv())
+                except Exception:
+                    pass
+            return " ".join(parts)
+        E24D_CASES = [("한남", 2023, "경영정보학과", "신입"), ("충남", 2023, "경영학부", "신입"), ("배재", 2023, "IT경영정보학과", "신입"), ("한밭", 2024, "융합경영학과", "신입"),
+                      ("목원", 2024, "응급구조학과", "신입"), ("한남", 2022, None, "신입"), ("배재", 2025, "IT경영정보학과", "신입"), ("배재", 2023, "IT경영정보학과", "편입")]
+        leaks_ = []
+        for u_, y_, d_, en_ in E24D_CASES:
+            at = pick(run(), u_, y_, en_, dept=d_ if d_ else False)
+            for pg_ in ("home", "remaining", "compare", "courses", "ask"):
+                nav(at, pg_)
+                for m_ in LEAK_RE.finditer(screen_text(at)):
+                    leaks_.append((u_, y_, d_, pg_, m_.group(0)))
+        check("화면: [E24d] 일반 모드 — 학교 5곳·학과·편입·미선택의 시작하기·내 졸업요건·학사 비교·개설 과목·규정 질문 화면 어디에도 '평가셋'·행 ID(BJ-/MW-/HB-/HN-/CN-)·'시작 비움'·'근거 행'이 없다",
+              not leaks_, str(leaks_[:4]))
+        at = nav(pick(run(), "한남", 2023, "신입"), "compare")
+        check("화면: [E24d] 한남 부전공↔다전공 비교 — 학생용 안내 '부전공 없이 단수 54는 선택 불가(융합교육 필수)'는 남고 '평가셋 B03·H09·H10'·'근거 행'은 없다",
+              "부전공 없이 단수 54는 선택 불가(융합교육 필수)" in screen_text(at) and "평가셋" not in screen_text(at) and "근거 행" not in screen_text(at))
+        at = nav(pick(run(), "충남", 2023, "신입"), "remaining")
+        check("화면: [E24d] 충남 졸업 평점 근거 — 의예과 노트는 남고 '평가셋 C05·C06·X03'·'시작 비움'은 없다", "의예과 2.0" in screen_text(at) and "C05" not in screen_text(at) and "시작 비움" not in screen_text(at))
+        leaks_dev = {}
+        at = nav(pick(run(dev=True), "한남", 2023, "신입"), "compare")
+        leaks_dev["compare"] = bool(re.search(r"근거 행: HN-\d{3}", screen_text(at)))
+        at = nav(pick(run(dev=True), "한남", 2023, "신입"), "remaining")
+        leaks_dev["remaining"] = bool(re.search(r"HN-\d{3}", screen_text(at)))
+        check("화면: [E24d] ?dev=1에서는 학사 비교의 '근거 행: HN-…'과 내 졸업요건 근거 보기의 행 ID가 보인다", all(leaks_dev.values()), str(leaks_dev))
+        Fake.badge, Fake.leak = False, True
+        for dev_ in (False, True):
+            at = nav(pick(run(dev=dev_), "한남", 2023, "신입"), "ask")
+            at.text_input(key="q_ask").set_value("부전공은 몇 학점이야?")
+            [b for b in at.button if b.label == "질문하기"][0].click()
+            at.run()
+            tx_ = screen_text(at)
+            if not dev_:
+                check("화면: [E24d] 규정 질문 답 — 일반 모드에서 답 본문의 행 ID 토큰·근거 카드 행 ID가 지워지고(표시만), 배지는 짧은 새 문구뿐이다",
+                      "부전공은 54학점이에요" in tx_ and "HN-0" not in tx_ and "이 값은 잠정이에요 (학과 확인)" in tx_ and "출처마다 값이 달라요 (학과 확인)" in tx_ and "(HN" not in tx_, tx_[:200])
+            else:
+                check("화면: [E24d] ?dev=1에서는 답 본문 원문(행 ID 포함)·근거 카드·배지의 행 ID가 그대로 보인다",
+                      "(HN-026)" in tx_ and "HN-001" in tx_ and "HN-020, HN-024" in tx_, tx_[:200])
+        Fake.badge, Fake.leak = True, False
         # E24c: 개설 과목 — 학과를 바꿀 때 영역·학년 기억을 비우고, IT경영정보학과면 '전공'과 학년 선택이 보인다
         if not CR.available():
             skip("E24c 개설 과목 학과·학년 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
@@ -1213,7 +1281,7 @@ def cmd_app():
             check("화면: [개설 과목] 이수한 과목 체크 → 목록에서 빠지고 '이수 제외 1과목', 값은 session_state(keep)에만", f'<b>{first["name"]}</b>' not in h and "86과목" in h and "이수 제외 1과목" in h and at.session_state["keep"].get("crs_done") == [first["code"]])
             at.selectbox(key="crs_area_w").set_value("교양_비전설계").run()
             h = html(at)
-            check("화면: [개설 과목] 2023 비전설계 영역: 22과목(진로·취창업 15 + 자기설계 7), 2025용 공유혁신 문구 없음", "22과목 · 22분반" in h and "진로·취창업 · 15과목" in h and "자기설계 · 7과목" in h and "BJ-016" in h)
+            check("화면: [개설 과목] 2023 비전설계 영역: 22과목(진로·취창업 15 + 자기설계 7), 2025용 공유혁신 문구 없음", "22과목 · 22분반" in h and "진로·취창업 · 15과목" in h and "자기설계 · 7과목" in h and "비전설계 영역에서 1과목(3학점)을 이수해요" in h and "BJ-016" not in h)
             at = nav(pick(run(), "배재", 2023, "신입"), "courses")
             h = html(at)
             check("화면: [E18c] 전공 목록에 대상 학년이 보이고 학년 필터가 있으며, 전공 화면에는 '학년 자료가 없어요'·'강의계획서에서 확인하세요' 문구가 없다",
@@ -1231,10 +1299,10 @@ def cmd_app():
             check("화면: [개설 과목] 배재 2025 영역에 공유혁신 있고 비전설계(교양) 없음", "공유혁신" in opts and "교양_비전설계" not in opts)
             at.selectbox(key="crs_area_w").set_value("공유혁신").run()
             h = html(at)
-            check("화면: [개설 과목] 공유혁신 = 전공융합설계 32 + 비전설계 22 + 혁신교육과미래설계 1 = 55과목·99분반, BJ-032·033·034·035 안내, 전공탐색은 자료 없음 명시",
-                  "55과목 · 99분반" in h and "전공융합설계 · 32과목" in h and "비전설계 · 진로·취창업 · 15과목" in h and '혁신교육과미래설계 (<abbr class="abbr" title="전공필수">전필</abbr>, P/F) · 1과목' in h and all(f"BJ-0{n}" in texts(at.caption) for n in (32, 33, 34, 35)) and "찾지 못했어요" in texts(at.caption), f"{[k for k in ('55과목 · 99분반', '전공융합설계 · 32과목', '비전설계 · 진로·취창업 · 15과목', '혁신교육과미래설계 (전필, P/F) · 1과목') if k not in h]} {texts(at.caption)[:2]}")
+            check("화면: [개설 과목] 공유혁신 = 전공융합설계 32 + 비전설계 22 + 혁신교육과미래설계 1 = 55과목·99분반, 공유혁신 안내(행 ID 없음), 전공탐색은 자료 없음 명시",
+                  "55과목 · 99분반" in h and "전공융합설계 · 32과목" in h and "비전설계 · 진로·취창업 · 15과목" in h and '혁신교육과미래설계 (<abbr class="abbr" title="전공필수">전필</abbr>, P/F) · 1과목' in h and "전공융합설계 9학점 이상" in texts(at.caption) and not re.search(r"(?:BJ|MW|HB|HN|CN)-\d{3}", texts(at.caption)) and "찾지 못했어요" in texts(at.caption), f"{[k for k in ('55과목 · 99분반', '전공융합설계 · 32과목', '비전설계 · 진로·취창업 · 15과목', '혁신교육과미래설계 (전필, P/F) · 1과목') if k not in h]} {texts(at.caption)[:2]}")
             at = nav(pick(run(), "배재", 2023, "편입"), "courses")
-            check("화면: [개설 과목] 편입이면 필수과목 면제 안내 한 줄(과목별 면제 배지 없음)", "BJ-060" in html(at) and "면제 가능" not in html(at))
+            check("화면: [개설 과목] 편입이면 필수과목 면제 안내 한 줄(과목별 면제 배지 없음)", "편입생은 편입 전 학년의 교양필수·전공필수가 면제될 수 있어요. 해당 여부는 학과에서 확인하세요." in html(at) and "BJ-060" not in html(at) and "면제 가능" not in html(at))
         at = nav(pick(run(), "목원", 2023, "신입"), "courses")
         check("화면: 배재 외 대학 개설 과목은 '지원하지 않아요' 안내(목록·버튼 없음)", "개설 과목 안내를 아직 지원하지 않아요" in html(at) and 'class="crs-sec"' not in html(at) and not at.exception)
         # 규정 안내: 홈 카드에서 질문 → 근거 카드 번호·배지, 학생 화면에 비용·응답 시간 없음
@@ -1267,7 +1335,7 @@ def cmd_app():
         Fake.badge = True
         con = sqlite3.connect(os.environ["SERVICE_LOG_DB"])
         cols = [r[1] for r in con.execute("pragma table_info(query_log)")]
-        check("화면: 로그에 질문 기록·열에 학점·평점·입학구분 없음", con.execute("select count(*) from query_log").fetchone()[0] == 3
+        check("화면: 로그에 질문 기록·열에 학점·평점·입학구분 없음", con.execute("select count(*) from query_log").fetchone()[0] == 3 + 2  # 3 + E24d 점검이 먼저 보낸 질문 2개
               and not any(k in c for c in cols for k in ("credit", "gpa", "entry", "학점", "평점")), str(cols))
         # 개발자 모드: 메뉴·응답 시간·비용·로그 페이지는 ?dev=1에서만
         at = pick(run(dev=True), "한남", 2023, "신입")

@@ -145,9 +145,9 @@ class Engine:
                 sources.append({"kind": "기준표", "id": rid, "nums": nums_of[rid], "title": f"{r['대학']} 기준표 · {r['항목']}", "target": r["대상"], "value": value,
                                 "status": r["상태"], "article": r["출처조항"], "pages": r["출처쪽"], "grade": _grade_label(r["출처등급"])})
                 if r["상태"] == "잠정":
-                    badges.append({"kind": "잠정", "text": f"{rid}은 잠정 값이에요(개정 전 조문 등을 확인하지 못함)"})
+                    badges.append({"kind": "잠정", "text": "이 값은 잠정이에요 (학과 확인)", "rid": rid})
                 if any(k in r["비고"] for k in FLAG_NOTE):
-                    badges.append({"kind": "학과확인필요", "text": f"{rid}: 출처 간 값이 달라요. 학과에 확인하세요"})
+                    badges.append({"kind": "학과확인필요", "text": "출처마다 값이 달라요 (학과 확인)", "rid": rid})
         else:
             metas = {}
             if ids:
@@ -170,9 +170,14 @@ class Engine:
                 sources.append(g)
         if R.UNANSWERABLE_RE.search(body):
             badges.insert(0, {"kind": "확인불가", "text": "규정에서 확인되지 않은 내용이 있어요. 학과 사무실이나 학사 공지를 확인하세요"})
-        uniq, out = set(), []
-        for b in badges:
-            if (b["kind"], b["text"]) not in uniq:
-                uniq.add((b["kind"], b["text"]))
+        uniq, out = {}, []
+        for b in badges:  # 같은 문구는 한 번만(배지에는 행 ID를 쓰지 않는다. 행 ID는 'rids'에만 모아 두고 개발자 모드에서만 화면에 붙인다, E24d)
+            rid = b.pop("rid", None)
+            k = (b["kind"], b["text"])
+            if k not in uniq:
+                uniq[k] = b
+                b["rids"] = []
                 out.append(b)
+            if rid and rid not in uniq[k]["rids"]:
+                uniq[k]["rids"].append(rid)
         return sources, out

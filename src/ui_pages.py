@@ -55,6 +55,13 @@ def is_dev():
     return st.query_params.get("dev") == "1"
 
 
+def dev_id(rid, md=False):
+    """행 ID는 개발자 모드(?dev=1)에서만 화면에 보인다(E24d). 일반 모드에서는 빈 글자. 조항 앞에 쓰도록 ' · '를 붙인다(md=True면 코드 서식)"""
+    if not is_dev():
+        return ""
+    return (f"`{rid}`" if md else U.esc(rid)) + " · "
+
+
 def goto(page):
     st.session_state["page"] = page
 
@@ -211,7 +218,7 @@ def checklist_html(items, limit=None):
         if it.get("src"):
             s = it["src"]
             short = f'<div class="ck-src">{U.esc(short_article(s["source"]))}</div>'
-            det = [f'{U.esc(s["id"])} · {U.esc(s["source"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])} · 상태 {U.esc(s["status"])}']
+            det = [f'{dev_id(s["id"])}{U.esc(s["source"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])} · 상태 {U.esc(s["status"])}']
         if it.get("extra"):
             det.append(U.esc(it["extra"]))
         out.append(f'<div class="ck ck-{cls}"><span class="badge b-{cls}">{U.esc(label)}</span>'
@@ -254,7 +261,7 @@ def sources_html(srcs):
         if s["kind"] == "기준표":
             top = f'{nums}<span>{U.esc(s["title"])}</span><span>{U.esc(short_article(s["article"]))}</span>'
             meta = f'값 <b>{U.esc(s["value"])}</b>'
-            det = [f'대상 {U.esc(s["target"])} · 상태 {U.esc(s["status"])}', f'{U.esc(s["id"])} · {U.esc(s["article"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}']
+            det = [f'대상 {U.esc(s["target"])} · 상태 {U.esc(s["status"])}', f'{dev_id(s["id"])}{U.esc(s["article"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}']
         else:
             ed = s.get("edition") or ""
             ed_chip = U.badge("cur" if ed.startswith("현행") else "old", ed.split("(")[0]) if ed else ""
@@ -267,19 +274,20 @@ def sources_html(srcs):
 
 def show_answer(out, log_id, key, hint=None, compact=False):
     for b in out["badges"]:
+        rid = f" ({', '.join(b['rids'])})" if is_dev() and b.get("rids") else ""  # 행 ID는 개발자 모드에서만(E24d)
         if b["kind"] == "확인불가":
             md(U.callout("warn", f'<b>확인 불가</b> · {U.esc(b["text"])}'))
         elif b["kind"] == "학과확인필요":
-            md(U.callout("warn", f'<b>학과 확인 필요</b> · {U.esc(b["text"])}'))
+            md(U.callout("warn", f'<b>학과 확인 필요</b> · {U.esc(b["text"] + rid)}'))
         else:
-            md(U.callout("info", U.esc(b["text"])))
+            md(U.callout("info", U.esc(b["text"] + rid)))
     if hint and any(b["kind"] == "확인불가" for b in out["badges"]):  # '확인 불가' 배지가 있을 때만(2026-11-09 승인 규칙)
         md(U.callout("soft", "내 졸업요건의 체크리스트에 관련 요건이 있을 수 있어요. (항목: " + U.esc(" · ".join(hint)) + ")"))
     with st.container(key=f"ans_{key}"):
-        show_body(out["answer"])
+        show_body(out["answer"] if is_dev() else S.strip_ids(out["answer"]))  # 표시할 때만 행 ID 토큰을 지운다(저장·평가용 원문 답은 그대로, E24d)
     if out.get("calc_text"):
         with st.expander("계산 과정"):
-            st.text(out["calc_text"])
+            st.text(out["calc_text"] if is_dev() else S.strip_ids(out["calc_text"]))
     srcs = out.get("sources", [])
     if srcs or out.get("tail"):
         if compact:
@@ -575,9 +583,9 @@ def page_remaining(sc):
         md('<div class="card-h">졸업하려면 이것들을 채워야 해요</div>')
         md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')  # 대학·학번·학과는 페이지 제목에 있어 반복하지 않는다
         with st.expander("근거 보기"):
-            st.markdown(f"`{grad['행ID']}` · 이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
+            st.markdown(f"{dev_id(grad['행ID'], md=True)}이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
             if cap_row:
-                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n`{cap_row['행ID']}` · {cap_row['출처조항']} · 쪽 {cap_row['출처쪽']} · 등급 {cap_row['출처등급']}")
+                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n{dev_id(cap_row['행ID'], md=True)}{cap_row['출처조항']} · 쪽 {cap_row['출처쪽']} · 등급 {cap_row['출처등급']}")
         generic_note(sc)
         if plan["tier"] == "T3":
             md('<div class="ck-src">영역별 남은 학점은 계산하지 않고, 규정 표의 영역별 기준만 보여 드려요.</div>')
@@ -599,7 +607,7 @@ def page_remaining(sc):
             major = next((a for a in stt["rem"]["areas"] if a["name"] == "전공"), None)
             if major and major["done"] > 0:
                 md(U.callout("concl", f'전공 기준 <b>{major["min"]:g}학점</b> 중 <b>{major["remaining"]:g}학점</b> 남았어요 '
-                                      f'({U.esc(plan["transfer"]["grade"])} 편입, 전적대학 인정 전공 학점 포함). 행 {U.esc(plan["transfer"]["row"]["행ID"])}'))
+                                      f'({U.esc(plan["transfer"]["grade"])} 편입, 전적대학 인정 전공 학점 포함).' + (f' 행 {U.esc(plan["transfer"]["row"]["행ID"])}' if is_dev() else '')))
         if not areas_on:
             md(unsupported_notice(plan))
         access_guide(sc)  # ③ 내 이수 학점은 어디서 보나요?
@@ -670,7 +678,7 @@ def page_compare(sc):
     generic_note(sc)
     r = S.compare(univ, year, dept)
     if not r["ok"]:
-        md(U.callout("warn", "이 조건의 부전공·복수(다)전공 학점을 기준표에서 확인하지 못했어요(확인 불가). " + U.esc(r.get("why") or "")))
+        md(U.callout("warn", "이 조건의 부전공·복수(다)전공 학점을 기준표에서 확인하지 못했어요(확인 불가). " + U.esc(S.strip_ids(r.get("why") or ""))))
         return
     with st.container(key="card_cmp_main"):
         md(compare_table_html(r))
@@ -679,9 +687,10 @@ def page_compare(sc):
             md(U.callout("info", U.esc(r["floor_note"])))
         for n in r["notes"]:
             md(U.callout("info", U.esc(n)))
-        md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
+        if is_dev():  # 행 ID는 개발자 모드에서만(E24d)
+            md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
         for why in r["reasons"]:
-            st.caption(why)
+            st.caption(S.strip_ids(why))
     q = S.explain_question(univ, year, dept)
     if q and st.button("AI 설명 듣기", key=f"explain|{univ}|{year}|{dept}", type="primary"):
         with st.spinner("설명을 만드는 중이에요…"):
@@ -794,7 +803,7 @@ def show_courses(sc):
         if not is_base:
             st.caption("전공 과목은 IT경영정보학과만 지원해요. 교양 영역은 모든 학과에 같이 보여 드려요.")
         if sc["entry"] == "편입":
-            md(U.callout("info", "편입생은 편입 전 학년의 교양필수·전공필수가 면제될 수 있어요(기준표 BJ-060). 해당 여부는 학과에서 확인하세요."))
+            md(U.callout("info", "편입생은 편입 전 학년의 교양필수·전공필수가 면제될 수 있어요. 해당 여부는 학과에서 확인하세요."))
         pool = CR.sections_in(secs_all, year, view)
         names = {s["과목코드"]: s["과목명"] for s in pool}
         if pool:
@@ -811,7 +820,7 @@ def show_courses(sc):
         md(f'<div class="card-sub"><b>{U.abbr_html(CR.AREA_LABEL[view])}</b> · {len(courses)}과목 · {nsec}분반'
            + (f' · 요일 {U.esc(", ".join(days))}' if days else "") + (f' · {U.esc(", ".join(grades))}' if grades else "") + (f' · 이수 제외 {nexcl}과목' if nexcl else "") + "</div>")
         if view in COURSE_NOTES:
-            st.caption(COURSE_NOTES[view])
+            st.caption(S.strip_ids(COURSE_NOTES[view]))
         if days and "시간 미정" not in days:
             hidden = sum(1 for s_ in pool if not s_["요일"] and s_["과목코드"] not in done_all)
             if hidden:
