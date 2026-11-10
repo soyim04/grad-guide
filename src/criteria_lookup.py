@@ -82,6 +82,8 @@ def items_for(q):
         return ["졸업학점"]
     if "비교과" in q and re.search(r"몇|얼마|시간|유닛|이수", q):  # E13
         return ["비교과_이수"]
+    if re.search(r"공학\s?(교육)?\s?인증", q):  # E27: 공학인증 안내 행(한남 공학교육인증 운영학과). 학과 행이 없으면 아래에서 RAG로 간다
+        return ["공학인증_안내"]
     return None
 
 
@@ -112,6 +114,17 @@ def in_range(row, year):
     return start <= year <= end
 
 
+def dept_in_criteria(univ, q):
+    """질문이 말한 학과가 이 대학 기준표의 학과·묶음 행 대상에 이름이 나오는가(E27)"""
+    return any(r["대학"] == univ and r["기준값여부"] == "기준" and r["대상"] != "전체" and any(target_mentioned(t, q) for t in targets_of(r)) for r in CRITERIA)
+
+
+# E27: 학과를 말하고 영역별·졸업요건·전공/교양 기준을 묻는 질문은 그 학과·학번의 졸업학점·교양·전공·대학특화 행을 조회한다(RAG는 표 열을 잃어 계열별 숫자를 뒤섞을 수 있다).
+# 정규식은 "졸업 평점 기준"·"수강 기준"처럼 다른 주제의 "기준"을 가져가지 않게 영역 낱말에 붙은 요건·기준만 본다. 학교 행이 없는 항목은 건너뛴다.
+AREA_ASK_RE = re.compile(r"영역별|(?:졸업|전공|교양|대학특화)\s?(?:요건|기준)")
+AREA_ITEMS = ["졸업학점", "교양", "전공", "기본전공", "심화전공", "대학특화"]
+
+
 def lookup(question):
     """반환: (결과, 사유). 결과는 {학번 또는 None: [criteria 행]} 또는 None(조회 안 함 → RAG)"""
     univ = query_filter.extract_universities(question)
@@ -123,6 +136,9 @@ def lookup(question):
     items = items_for(question)
     if transfer_route(univ[0], question):  # E25b: 편입 행이 다루는 주제(전공·교양·필수·면제 등)가 질문에 있으면 편입_이수요건
         items = ["편입_이수요건"]
+    optional = False
+    if not items and AREA_ASK_RE.search(question) and dept_in_criteria(univ[0], question):
+        items, optional = AREA_ITEMS, True
     if not items:
         return None, "숫자 항목 아님"
     if COMPARE_RE.search(question):
@@ -142,14 +158,20 @@ def lookup(question):
                 cand, any_spec = spec, True
             else:
                 cand = [r for r in cand if r["대상"] == "전체"]
-                if mentions and not cand:
+                if mentions and not cand and not optional:
                     return None, f"질문의 {mentions}에 맞는 대상 행 없음"
             if not cand:
+                if optional:
+                    continue
                 return None, f"{item} 행 없음(묶음 불완전)"
             rows += cand
         # 학과를 지목했는데 묶음 어디에서도 그 학과 행을 못 찾았으면 RAG로 보낸다(E8).
         # 한 항목이라도 찾았으면 나머지 항목은 전체 행을 쓴다(E12: 충남 경영학부 복수전공은 주전공 학점만 학과 행, 이수학점은 2026학번부터 학과 행).
-        if mentions and not any_spec:
+        # E27: 학과 행이 어느 항목에도 없어도 그 학과가 이 대학 기준표에 이름이 나오는 학과(다른 항목의 학과·묶음 행)면 전체 행으로 채워 조회한다
+        # (졸업학점은 대학 전체 행, 전공·교양은 학과 묶음 행인 경우 등). 기준표 어디에도 없는 이름은 E8대로 RAG로 보낸다.
+        if optional and not rows:
+            return None, "영역 행 없음"
+        if mentions and not any_spec and not dept_in_criteria(univ[0], question):
             return None, f"질문의 {mentions}에 맞는 대상 행 없음"
         out[year] = rows
     return out, ""

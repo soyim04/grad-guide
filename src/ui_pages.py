@@ -330,6 +330,8 @@ def qa_block(sc, prefix, compact=False):
             c1, c2 = st.columns([6, 1.3])
             q = c1.text_input("질문", key=qkey, placeholder="예: 재수강은 몇 학점까지 할 수 있어?", label_visibility="collapsed")
             go = c2.form_submit_button("질문하기", type="primary", width="stretch")
+    if prefix == "ask":  # E27: 학과별 기준표 숫자는 RAG보다 기준표 화면이 정확하다
+        st.caption("학과별 졸업 기준표는 '내 졸업요건'에서 정확히 볼 수 있어요.")
     hist = st.session_state.setdefault("history", [])
     if go and q.strip():
         with st.spinner("규정을 찾고 답을 만드는 중이에요…"):
