@@ -33,7 +33,7 @@ def _detail(item):
     return item in TOP or any(item.startswith(p) for ks in KID_PREFIX.values() for p in ks)
 
 
-AREA_UNIVS = {"배재", "목원", "한남"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
+AREA_UNIVS = {"배재", "목원", "한남", "한밭"}  # E23: 경영 계열 밖 학과도 영역별 기준 행(묶음 행)이 있는 대학
 
 
 def default_method(univ, year, dept=None):
