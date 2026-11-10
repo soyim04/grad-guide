@@ -392,9 +392,14 @@ def cmd_logic():
         check(f"회귀 E20: 배재 2023 편입 질문 '{raw}'은 조회 BJ-060~063", rows_of(q) == E20_ROWS and engine.routable(q), f"{q} {rows_of(q)}")
     check("회귀 E20: 배재 '편입생은 전공 몇 학점 들어야 해?'(학점 질문, 서비스 점검 #11)는 이수요건이 아니라 RAG 그대로",
           rows_of(engine.choose_question("편입생은 전공 몇 학점 들어야 해?", "배재", 2023, "IT경영정보학과")[0]) is None)
-    check("E25(E20 기대 변경): 한밭은 편입 이수요건 행(HB-076~078)이 생겨 '편입생 필수·이수' 질문은 조회로 간다(채플처럼 행에 없는 주제는 한계로 기록)",
-          rows_of(engine.choose_question("편입생도 채플 들어야 해?", "한밭", 2024, "융합경영학과")[0]) == ["HB-076", "HB-077", "HB-078"]
-          and rows_of(engine.choose_question("편입생은 전공 몇 학점 들어야 해?", "한밭", 2024, "융합경영학과")[0]) is None)
+    check("회귀 E20: 한밭 '편입생도 채플 들어야 해?'는 편입 행이 다루지 않는 주제라 RAG로 남음",
+          rows_of(engine.choose_question("편입생도 채플 들어야 해?", "한밭", 2024, "융합경영학과")[0]) is None)
+    check("E25b: 한밭 '편입생은 전공 몇 학점 들어야 해?'는 편입 행(전공 50학점)이 다루는 주제라 조회(HB-076~078), 졸업학점 질문·행에 없는 봉사·졸업시험은 조회 아님",
+          rows_of(engine.choose_question("편입생은 전공 몇 학점 들어야 해?", "한밭", 2024, "융합경영학과")[0]) == ["HB-076", "HB-077", "HB-078"]
+          and rows_of(engine.choose_question("편입생은 졸업하려면 몇 학점 이수해야 해?", "한밭", 2024, "융합경영학과")[0]) != ["HB-076", "HB-077", "HB-078"]
+          and all(rows_of(engine.choose_question(x, "한밭", 2024, "융합경영학과")[0]) is None for x in ("편입생도 봉사 들어야 해?", "편입생도 졸업시험 봐야 해?")))
+    check("E25b: 일반 규칙 — 주제어는 그 학교 편입 행에서 뽑는다(배재 채플·아펜젤러·면제, 한밭 전공·심화전공·학점·교양, 한밭엔 채플 없음)",
+          {"채플", "아펜젤러", "면제"} <= L.transfer_topics("배재") and "학점" not in L.transfer_topics("배재") and {"전공", "심화전공", "학점", "교양"} <= L.transfer_topics("한밭") and "채플" not in L.transfer_topics("한밭"))
     check("회귀 E20: 수치 의도가 앞선다(편입생은 졸업하려면 몇 학점 이수해야 해? → 졸업학점 조회, 편입_이수요건 아님)",
           "BJ-060" not in (rows_of(engine.choose_question("편입생은 졸업하려면 몇 학점 이수해야 해?", "배재", 2023, "IT경영정보학과")[0]) or []))
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")

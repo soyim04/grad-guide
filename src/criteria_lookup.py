@@ -82,11 +82,28 @@ def items_for(q):
         return ["졸업학점"]
     if "비교과" in q and re.search(r"몇|얼마|시간|유닛|이수", q):  # E13
         return ["비교과_이수"]
-    # E20: 편입생이 들어야 하는 필수(면제·이수) 질문은 편입_이수요건 행(배재 BJ-060~063)을 조회한다. 수치 의도가 아니라서 맨 끝에 둔다(앞의 규칙이 먼저 걸린다)
-    # "학점"을 묻는 질문(편입생 전공 몇 학점 들어야 해?)은 편입 학점 기준(제64조 ⑤)이라 이수요건이 아니다: 서비스 점검 #11이 RAG로 맞게 답하던 것을 지키려고 제외
-    if "편입" in q and "학점" not in q and re.search(r"필수|면제|들어야|이수해야", q):
-        return ["편입_이수요건"]
     return None
+
+
+# E25b: 편입_이수요건 조회는 그 학교의 편입 행이 다루는 주제가 질문에 있을 때만 간다(학교 무관 일반 규칙).
+# 주제어 후보는 이 상수 한 곳에 두고, 학교별로 그 학교 편입 행의 조건·항목원어에 실제로 나오는 낱말만 쓴다
+# (배재: 교양필수·전공필수·면제·아펜젤러·채플 / 한밭: 전공·심화전공·교양·학점). 행에 없는 주제(채플·봉사·졸업시험 등)는 RAG로 간다.
+# "학점"을 묻는 질문은 그 학교 편입 행에 학점이 적혀 있을 때만(한밭 50학점·10학점) 이수요건이고, 배재처럼 행에 학점이 없으면 편입 학점 기준(제64조 ⑤)이라 RAG(서비스 점검 #11)다.
+TRANSFER_TOPIC_WORDS = ("전공", "심화전공", "기본전공", "교양", "핵심교양", "일반교양", "대학특화", "필수", "면제", "채플", "아펜젤러", "기독교정신", "인성", "학점", "비교과", "봉사", "졸업시험")
+
+
+def transfer_topics(univ):
+    text = " ".join(r["조건"] + " " + r["항목원어"] for r in CRITERIA if r["대학"] == univ and r["항목"] == "편입_이수요건" and r["기준값여부"] == "기준")
+    return {w for w in TRANSFER_TOPIC_WORDS if w in text}
+
+
+def transfer_route(univ, q):
+    if "편입" not in q:
+        return False
+    topics = transfer_topics(univ)
+    if "학점" in q and "학점" not in topics:
+        return False
+    return any(w in q for w in topics if w != "학점")
 
 
 def in_range(row, year):
@@ -104,6 +121,8 @@ def lookup(question):
     if any(y < 2022 or y > 2026 for y in years):
         return None, "범위 밖 학번"
     items = items_for(question)
+    if transfer_route(univ[0], question):  # E25b: 편입 행이 다루는 주제(전공·교양·필수·면제 등)가 질문에 있으면 편입_이수요건
+        items = ["편입_이수요건"]
     if not items:
         return None, "숫자 항목 아님"
     if COMPARE_RE.search(question):
