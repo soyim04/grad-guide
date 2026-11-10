@@ -266,6 +266,17 @@ def cmd_logic():
     check("회귀 E20: 학과를 안 적은 한밭 복수전공 질문은 주전공 행이 학과 한정이라 여전히 RAG",
           rows_of("한밭대 2024학번 학생: 복수전공은 몇 학점 이수해야 해?") is None)
     check("회귀 E20: 범위 값이 없는 대학(목원)은 최저값 안내가 붙지 않음", not S.compare("목원", 2023, "경영학부").get("floor_note"))
+    # 1-1e. 회귀 사례(E20, 서비스 점검 #14): 편입생 필수·면제 질문은 편입_이수요건(BJ-060~063)을 조회한다(배재). 학점·수치 질문은 영향 없음
+    E20_ROWS = ["BJ-060", "BJ-061", "BJ-062", "BJ-063"]
+    for raw in ("편입생은 전공 말고 필수로 들어야하는게 아펜젤러만 있나?", "편입생도 채플 들어야 해?", "편입생 교양필수 뭐 들어야 돼?"):
+        q, used = engine.choose_question(raw, "배재", 2023, "IT경영정보학과")
+        check(f"회귀 E20: 배재 2023 편입 질문 '{raw}'은 조회 BJ-060~063", rows_of(q) == E20_ROWS and engine.routable(q), f"{q} {rows_of(q)}")
+    check("회귀 E20: 배재 '편입생은 전공 몇 학점 들어야 해?'(학점 질문, 서비스 점검 #11)는 이수요건이 아니라 RAG 그대로",
+          rows_of(engine.choose_question("편입생은 전공 몇 학점 들어야 해?", "배재", 2023, "IT경영정보학과")[0]) is None)
+    check("회귀 E20: 한밭 '편입생도 채플 들어야 해?'는 편입 이수요건 행이 없어 RAG로 남음",
+          rows_of(engine.choose_question("편입생도 채플 들어야 해?", "한밭", 2024, "융합경영학과")[0]) is None)
+    check("회귀 E20: 수치 의도가 앞선다(편입생은 졸업하려면 몇 학점 이수해야 해? → 졸업학점 조회, 편입_이수요건 아님)",
+          "BJ-060" not in (rows_of(engine.choose_question("편입생은 졸업하려면 몇 학점 이수해야 해?", "배재", 2023, "IT경영정보학과")[0]) or []))
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙
