@@ -148,6 +148,10 @@ def sidebar():
         dept, dept_state = None, "generic"
     else:
         dept, dept_state = pick, "picked"
+    prev = st.session_state.get("_crs_ctx")  # E24c: (학교, 학과)가 바뀐 실행에서만 개설 과목 기억을 비운다(다른 페이지에 있어도 같은 규칙)
+    if prev is not None and prev != (univ, dept):
+        reset_courses_memory(prev[0] != univ)
+    st.session_state["_crs_ctx"] = (univ, dept)
     entry =sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
     transfer_grade = None
     if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
@@ -491,6 +495,17 @@ def basis_html(plan):
 def access_guide(sc):
     with st.expander("내 이수 학점은 어디서 보나요?"):
         st.markdown(ACCESS_GUIDE.get(sc["univ"], ACCESS_GUIDE_DEFAULT))
+
+
+def reset_courses_memory(univ_changed):
+    """E24c: 개설 과목 화면이 기억하던 값을 비운다. 학교가 바뀌면 이수 체크·요일·가상 과목 보기까지 모두, 같은 학교에서 학과만 바뀌면 영역·학년·안내만
+    (이수 체크·요일은 유지). 영역을 비워야 IT경영정보학과를 골랐을 때 '전공'(과 학년 칸)이 다시 첫 영역이 되고, 다른 학과로 바꾸면 '전공'이 없는 목록에서 시작한다."""
+    kp = keep()
+    drop = ["crs_area", "crs_grades", "crs_hint"] + (["crs_done", "crs_days", "crs_virtual"] if univ_changed else [])
+    for k in drop:
+        kp.pop(k, None)
+    for w in ["crs_area_w", "crs_grades_w"] + (["crs_done_w", "crs_days_w", "crs_virtual_w"] if univ_changed else []):
+        st.session_state.pop(w, None)
 
 
 def go_courses(view=None, hint=None):

@@ -1148,6 +1148,48 @@ def cmd_app():
             at = nav(pick(run(), "배재", 2023, "신입"), "courses")
             h = html(at)
             check("화면: [E19] 개설 과목 목록에 약어 툴팁(전필·전선 title)과 영역 선택 도움말", 'title="전공필수">전필</abbr>' in h and 'title="전공선택">전선</abbr>' in h and "전필=전공필수" in " ".join(str(x.help) for x in at.selectbox))
+        # E24c: 개설 과목 — 학과를 바꿀 때 영역·학년 기억을 비우고, IT경영정보학과면 '전공'과 학년 선택이 보인다
+        if not CR.available():
+            skip("E24c 개설 과목 학과·학년 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
+        else:
+            secs_ = CR.load()
+            n_grade = {g_: len({x_["과목코드"] for x_ in secs_ if x_["영역"] == "전공" and x_["대상학년"] == g_}) for g_ in CR.GRADES}
+
+            def crs_keys(at_):
+                return [w_.key for w_ in list(at_.multiselect) + list(at_.selectbox) + list(at_.checkbox) if w_.key and w_.key.startswith("crs")]
+            at = nav(pick(run(), "배재", 2023, "신입"), "courses")  # IT경영정보학과를 고르고 연다
+            check("화면: [E24c] IT경영정보학과를 고르면 영역 기본값이 '전공'이고 대상 학년 선택(1~4학년)이 보인다",
+                  at.selectbox(key="crs_area_w").value == "전공" and "crs_grades_w" in crs_keys(at) and list(at.multiselect(key="crs_grades_w").options) == list(CR.GRADES) and not at.exception)
+            at.multiselect(key="crs_grades_w").set_value(["4학년"]).run()
+            check(f"화면: [E24c] 학년을 4학년으로 바꾸면 목록이 줄어든다(전공 {sum(n_grade.values())}과목 → 4학년 {n_grade['4학년']}과목)",
+                  f"{n_grade['4학년']}과목 · " in html(at) and f"{sum(n_grade.values())}과목 · " not in html(at) and " · 4학년" in html(at))
+            at.multiselect(key="crs_grades_w").set_value(["1학년", "2학년"]).run()
+            check("화면: [E24c] 학년을 다시 바꾸면 그 학년 과목 수로 바뀐다(1+2학년)", f"{n_grade['1학년'] + n_grade['2학년']}과목" in html(at))
+            at = nav(pick(run(), "배재", 2023, "신입", dept=False), "courses")  # 학과 미선택으로 연다
+            check("화면: [E24c] 학과 미선택이면 학년 선택 없이 '전공 과목은 IT경영정보학과만 지원해요' 안내만, 영역에 '전공'이 없다",
+                  "crs_grades_w" not in crs_keys(at) and "전공 과목은 IT경영정보학과만 지원해요" in html(at) and "전공" not in at.selectbox(key="crs_area_w").options[0])
+            at.sidebar.selectbox(key="dept_배재").set_value("IT경영정보학과")
+            at.run()
+            check("화면: [E24c] (이번 버그) 미선택으로 개설 과목을 연 뒤 IT경영정보학과를 고르면 영역이 '전공'으로 바뀌고 학년 선택이 보인다",
+                  at.selectbox(key="crs_area_w").value == "전공" and "crs_grades_w" in crs_keys(at))
+            at.sidebar.selectbox(key="dept_배재").set_value("경영학과")
+            at.run()
+            check("화면: [E24c] 다른 학과로 바꾸면 학년 선택이 없어지고 안내가 보인다(영역은 '전공' 없는 목록의 첫 영역)",
+                  "crs_grades_w" not in crs_keys(at) and "전공 과목은 IT경영정보학과만 지원해요" in html(at) and "전공" not in at.selectbox(key="crs_area_w").options[0])
+            at = nav(pick(run(), "배재", 2023, "신입"), "courses")
+            at.selectbox(key="crs_area_w").set_value("교양필수").run()
+            check("화면: [E24c] 같은 학과 안에서 영역을 직접 바꾼 선택은 그대로 유지된다", at.selectbox(key="crs_area_w").value == "교양필수" and "crs_grades_w" not in crs_keys(at))
+            at.multiselect(key="crs_done_w").set_value([at.multiselect(key="crs_done_w").options[0]]).run()
+            done_ = list(at.session_state["keep"].get("crs_done", []))
+            at.sidebar.selectbox(key="dept_배재").set_value("경영학과")
+            at.run()
+            check("화면: [E24c] 같은 학교 안에서 학과만 바뀌면 이수 체크한 과목은 유지된다", bool(done_) and list(at.session_state["keep"].get("crs_done", [])) == done_ and not at.exception)
+            at.sidebar.selectbox(key="univ").set_value("목원")
+            at.run()
+            check("화면: [E24c] 학교가 바뀌면 이수 체크·요일·영역 기억이 모두 초기화된다", not at.session_state["keep"].get("crs_done") and not at.session_state["keep"].get("crs_area") and not at.exception)
+            at.sidebar.selectbox(key="univ").set_value("배재")
+            at.run()
+            check("화면: [E24c] 배재로 돌아오면 이전 이수 체크가 되살아나지 않는다", not at.session_state["keep"].get("crs_done"))
         # 개설 과목 페이지(배재대 2026-2, 가공본이 있을 때만)
         if not CR.available():
             skip("개설 과목 화면 점검: data/courses_baejae_2026-2.json 없음(build_courses.py로 생성)")
