@@ -1018,6 +1018,19 @@ def cmd_app():
         check("화면: [E22] 스타일 — 사이드바 240px·메뉴 44px·남색 #1E3A8A·선 #E9E9E7·카드 8px, 그림자·그라데이션·옛 보라(#5B47C7) 없음, 테마 색도 남색",
               all(k in _us.CSS for k in ("width:240px", "min-height:44px", "#1E3A8A", "#E9E9E7", "border-radius:8px", "font-size:19px", "font-size:16px", "min-height:40px"))
               and "box-shadow:0" not in _us.CSS and "gradient" not in _us.CSS and "5B47C7" not in _us.CSS and "5B47C7" not in cfg.upper().replace("#", "#") and 'primaryColor = "#1E3A8A"' in cfg and 'baseRadius = "medium"' in cfg)
+        import base64 as _b64
+        _logo = (ROOT / "assets" / "logo.svg").read_bytes()
+        _fav = (ROOT / "assets" / "favicon.svg").read_bytes()
+        _brand = re.search(r"\.brand-ico\{[^}]*\}", _us.CSS).group(0)
+        _hero = re.search(r"\.hero-ico\{[^}]*\}", _us.CSS).group(0)
+        _app_src = (ROOT / "src" / "app.py").read_text(encoding="utf-8")
+        check("화면: [로고] 사이드바 로고는 타일 없이 28px SVG(assets/logo.svg를 base64로 CSS에 넣음, 남색 배경 사각형·옛 CSS 아이콘 없음), 홈 hero는 48px 연한 박스 안 30px, 탭 아이콘은 favicon.svg, 글자 '졸업나침반' 그대로",
+              b"<svg" in _logo and b"#F2A93B" in _logo and b"<svg" in _fav and b'stroke-width="5"' in _fav
+              and "width:28px;height:28px" in _brand and "border-radius" not in _brand and "#1E3A8A" not in _brand.replace(_b64.b64encode(_logo).decode(), "") and _b64.b64encode(_logo).decode() in _brand
+              and "width:48px;height:48px" in _hero and "center/30px 30px" in _hero and _b64.b64encode(_logo).decode() in _hero
+              and "__LOGO__" not in _us.CSS and "favicon.svg" in _app_src and "🧭" not in _app_src
+              and '<div class="brand-ico"></div><div class="brand-name">졸업나침반</div>' in (ROOT / "src" / "ui_pages.py").read_text(encoding="utf-8")
+              and not at.exception)
         at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
         check("화면: [정리] 배재 경영 계열은 영역별 미지원 안내 없음", NO_AREA not in html(at))
         check("화면: [정리] 남은 학점 위쪽에 '졸업학점 130학점 이상'만(대학·학번·학과 반복 없음)", 'class="card-sub">졸업학점 <b>130학점 이상</b></div>' in html(at))

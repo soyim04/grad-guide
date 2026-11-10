@@ -5,8 +5,10 @@
 HTML 문자열에는 빈 줄·4칸 이상 들여쓰기를 넣지 않는다(마크다운이 코드 블록으로 읽는다).
 """
 
+import base64
 import html
 import re
+from pathlib import Path
 
 import streamlit as st
 
@@ -29,7 +31,7 @@ section[data-testid="stSidebar"]{background:#fff;border-right:1px solid var(--li
 section[data-testid="stSidebar"][aria-expanded="true"]{width:240px!important;min-width:240px!important;}
 section[data-testid="stSidebar"] [data-testid="stSidebarUserContent"]{padding-top:1.2rem;}
 .brand{display:flex;gap:10px;align-items:center;margin-bottom:1rem;}
-.brand-ico{width:34px;height:34px;border-radius:8px;background:#1E3A8A url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M15.5 8.5l-2 5-5 2 2-5z'/%3E%3C/svg%3E") center/62% no-repeat;}
+.brand-ico{flex:none;width:28px;height:28px;background:url("__LOGO__") center/contain no-repeat;}
 .brand-name{font-size:19px;font-weight:800;color:var(--ink);line-height:1.2;}
 .side-h{font-size:14px;font-weight:700;color:var(--ink);margin:1.1rem 0 .3rem;}
 .side-note{font-size:.82rem;color:var(--mute);line-height:1.5;}
@@ -131,7 +133,7 @@ details.crs summary{cursor:pointer;line-height:1.7;}
 abbr.abbr{text-decoration:underline dotted;text-underline-offset:3px;cursor:help;}
 /* 시작하기 */
 .hero{display:flex;gap:14px;align-items:center;margin:.2rem 0 1.6rem;}
-.hero-ico{flex:none;width:48px;height:48px;border-radius:8px;background:var(--tint) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231E3A8A' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M15.5 8.5l-2 5-5 2 2-5z'/%3E%3C/svg%3E") center/62% no-repeat;}
+.hero-ico{flex:none;width:48px;height:48px;border-radius:8px;background:var(--tint) url("__LOGO__") center/30px 30px no-repeat;}
 .hero-title{font-size:1.7rem;font-weight:800;line-height:1.25;}
 .hero-sub{font-size:1rem;color:var(--mute);margin-top:.15rem;}
 .home-h{font-size:1.1rem;font-weight:800;margin:1.6rem 0 .4rem;}
@@ -156,6 +158,11 @@ abbr.abbr{text-decoration:underline dotted;text-underline-offset:3px;cursor:help
 section[data-testid="stSidebar"] [data-testid="stRadio"] [role="radiogroup"]{gap:.35rem;}
 </style>
 """
+
+# 로고(assets/logo.svg)는 파일을 base64로 CSS에 직접 넣는다(정적 파일 서빙 설정 불필요). 사이드바 28px(타일 없음)·홈 hero 박스 안 30px
+LOGO_SVG = Path(__file__).resolve().parent.parent / "assets" / "logo.svg"
+LOGO_URI = "data:image/svg+xml;base64," + base64.b64encode(LOGO_SVG.read_bytes()).decode("ascii")
+CSS = CSS.replace("__LOGO__", LOGO_URI)
 
 
 ABBR = {"교필선": "교양필수선택(영역을 골라 듣는 교양)", "교필": "교양필수", "교선": "교양선택", "전필": "전공필수", "전선": "전공선택", "일선": "일반선택"}

@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ui_pages as P  # noqa: E402
 import ui_style as U  # noqa: E402
 
-st.set_page_config(page_title="졸업나침반", page_icon="🧭", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="졸업나침반", page_icon=str(Path(__file__).resolve().parent.parent / "assets" / "favicon.svg"), layout="wide", initial_sidebar_state="expanded")
 
 
 def main():
