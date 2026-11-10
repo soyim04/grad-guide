@@ -148,6 +148,11 @@ def diff_rows(old, cur):
     return hard, soft
 
 
+def _norm_log(lines):
+    """진행 로그에서 실행 날짜(저장 파일명의 YYYY-MM-DD)를 지우고 비교한다. 날짜가 들어 있으면 날이 바뀔 때마다 동치 점검이 실패한다(2026-11-10 발견)"""
+    return [re.sub(r"\d{4}-\d{2}-\d{2}", "<날짜>", l) for l in lines]
+
+
 def cmd_equiv(write_baseline=False):
     snap = snapshot()
     routes = {}
@@ -166,7 +171,7 @@ def cmd_equiv(write_baseline=False):
     for attempts in range(1, MAX_TRIES + 1):
         cur = {r["id"]: r for r in snap["rows"]}
         hard, soft = diff_rows(old, cur)
-        if not hard and not soft and snap["log_lines"] == base["log_lines"]:
+        if not hard and not soft and _norm_log(snap["log_lines"]) == _norm_log(base["log_lines"]):
             break
         if hard or (not soft):  # 허용 밖 불일치(또는 행은 같은데 진행 로그만 다름)는 재시도하지 않는다
             hard = hard or [("진행 로그", "")]
