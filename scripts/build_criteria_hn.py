@@ -32,7 +32,7 @@ ENG24 = ["정보통신공학과", "전기전자공학과", "멀티미디어공�
 ART = ["융합디자인학과", "회화과", "패션디자인학과", "미디어영상학과", "스포츠과학과"]
 EDU_OK = ["국어교육과", "영어교육과", "교육학과", "역사교육과"]
 EDU_TENT = ["미술교육과", "수학교육과"]
-COS = ["코스메틱사이언스학과"]
+# E26c: 코스메틱사이언스학과는 학칙 별표1 비고 "(정원외) 외국인 전담학과"(입학정원 2026·2027=0, 2024·2025 칸 없음)라 제외(정원외 학과 제외 방침). 연계·융합전공 "코스메틱사이언스전공"은 학과가 아니라 해당 없음.
 JA23 = {"일어일문학과": "외국어문학부 일어일문학전공", "프랑스어문학과": "외국어문학부 프랑스어문학전공"}
 ENG_OLD = {"건축공학과": "토목·건축공학부 건축공학전공", "건설환경공학과": "토목·건축공학부 토목환경공학전공"}
 
@@ -89,17 +89,15 @@ for key, (y0, y1, hum, sci_eng_art, st) in PERIODS.items():
         add(y0, y1, EDU_OK, "졸업학점", "127", clause=CL41 + "; 사범대학 행", page=PG41, orig="사범", note="사범대학 127. " + base)
         add(y0, y1, EDU_TENT, "졸업학점", "127", clause=CL41 + "; 사범대학 행", page=PG41, status="잠정", orig="사범",
             note="별표1은 미술교육과=예능·수학교육과=이학 계열로 적었으나 졸업학점은 사범대학 127을 적용(학칙 제41조 사범 행). 계열 칸과 달라 잠정. " + base)
-        add(y0, y1, COS, "졸업학점", "128", clause=CL41, page=PG41, status="잠정", orig="이학·공학·예능·체능·간호",
-            note="별표1에서 코스메틱사이언스학과의 계열 칸이 비어 있어 128로 잠정(정원외 외국인 전담학과). " + base)
     else:
         add(y0, y1, EDU_OK + EDU_TENT, "졸업학점", "127", clause=CL41 + "; 사범대학 행", page=PG41, status="잠정", orig="사범",
             note="사범대학 127(미술교육·수학교육은 별표1 계열 칸과 달라 잠정). " + base)
 
 # ---- 교양 (시행세칙 제6조 ①) ----
 CL6 = "학칙 시행세칙 제6조 ① 입학연도별 교양교육과정 편성표 (개정 2024.02.13.)"
-ALL24 = HUM24 + SCI + ENG24 + ART + EDU_OK + EDU_TENT + COS
-ALL23 = HUM23 + SCI + ENG_OLDL + ART + EDU_OK + EDU_TENT + COS
-ALL22 = HUM22 + SCI + ENG_OLDL + ART + EDU_OK + EDU_TENT + COS
+ALL24 = HUM24 + SCI + ENG24 + ART + EDU_OK + EDU_TENT
+ALL23 = HUM23 + SCI + ENG_OLDL + ART + EDU_OK + EDU_TENT
+ALL22 = HUM22 + SCI + ENG_OLDL + ART + EDU_OK + EDU_TENT
 add(2022, 2022, [BASE] + STABLE, "교양", "29", utype="심화단수", fil=F_BY, clause=CL6, page="4(4)", orig="교양필수",
     note="소양교육 6 + 기초교육 15 + 균형교양 8. 2019~2022 기본 이수 방식(심화단수)용. 경영정보학과는 HN-010(단수)과 값이 같다")
 add(2022, 2022, ALL22, "교양", "29", utype="심화단수", fil=F_BY, clause=CL6, page="4(4)", status="잠정", orig="교양필수",
