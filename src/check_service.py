@@ -432,6 +432,24 @@ def cmd_logic():
     check("E27b·E27c: 목원 2022~2026 학과 묶음 모든 학과·학번에 졸업학점 행이 정확히 하나이고 값이 원문 합계 칸과 같다",
           all(len(mw_grad.get(k_, [])) == 1 for k_ in mw_depts) and all(mw_grad[k_][0] == mw_want(k_) for k_ in mw_depts),
           [k_ for k_ in mw_depts if len(mw_grad.get(k_, [])) != 1 or mw_grad[k_][0] != mw_want(k_)])
+    # 1-1m. E24b: 사이드바 학과 목록(학번별 · 묶음 행은 학과 하나하나 · 대체 선택지는 따로)
+    DEPT_KNOWN_NO_GRAD = {("충남", "약학과"), ("한남", "코스메틱사이언스학과")}  # 졸업학점 행이 둘(충남 약학과 168·232)이거나 이름만 있는 학과(한남 2022·2023 잠정 이름): 선택은 되고 화면이 확인 불가를 안내
+    bad_dc = []
+    for u_ in S.BASE_DEPT:
+        for y_ in range(2022, 2027):
+            ds_, al_ = S.dept_choices(u_, y_)
+            bad_dc += [(u_, y_, t_) for t_ in ds_ + al_ if S.graduation_row(u_, t_, y_) is None and (u_, t_) not in DEPT_KNOWN_NO_GRAD]
+            bad_dc += [(u_, y_, "빈 목록")] if not ds_ else []
+    check("E24b: 학번별 학과 목록의 모든 학과·계열이 그 학번에 졸업학점 행이 풀린다(알려진 예외 2개 제외), 목록은 학교·학번마다 비지 않는다", not bad_dc, str(bad_dc[:5]))
+    d22_, a22_ = S.dept_choices("목원", 2022)
+    d24_, a24_ = S.dept_choices("목원", 2024)
+    check("E24b: 목원 응급구조학과는 2022 목록에 없고 2024 목록에 있다(학번에 행이 있는 학과만), 사범대학·계약학과 및 영어트랙은 대체 선택지",
+          "응급구조학과" not in d22_ and "응급구조학과" in d24_ and "사범대학" in a22_ and "계약학과 및 영어트랙" in a24_ and "사범대학" not in d24_ and "계약학과 및 영어트랙" not in d24_)
+    dh_, ah_ = S.dept_choices("한남", 2023)
+    check("E24b: 한남 계열 2개는 대체 선택지(학과 목록 뒤)이고 학과 목록에 없다, 묶음 행은 학과 하나하나로 펼쳐 이름이 겹치지 않는다",
+          {"인문사회계열", "이학·공학·예능·체능·간호계열"} <= set(ah_) and not ({"인문사회계열", "이학·공학·예능·체능·간호계열"} & set(dh_)) and len(dh_) == len(set(dh_)) and "경영정보학과" in dh_)
+    check("E24b: 학번이 없으면 2022~2026 합집합(목원 학과가 학번별 목록보다 많다), 범위 밖 값도 합집합", len(S.dept_choices("목원", None)[0]) > len(d24_) and S.dept_choices("목원", "범위 밖")[0] == S.dept_choices("목원", None)[0])
+    check("E24b: 기존 grad_targets(univ)는 그대로(학번 없는 전체 목록)", all(set(S.dept_choices(u_, None)[0] + S.dept_choices(u_, None)[1]) <= set(S.grad_targets(u_)) for u_ in S.BASE_DEPT))
     # 1-1e. 회귀 사례(E20, 서비스 점검 #14): 편입생 필수·면제 질문은 편입_이수요건(BJ-060~063)을 조회한다(배재). 학점·수치 질문은 영향 없음
     E20_ROWS = ["BJ-060", "BJ-061", "BJ-062", "BJ-063"]
     for raw in ("편입생은 전공 말고 필수로 들어야하는게 아펜젤러만 있나?", "편입생도 채플 들어야 해?", "편입생 교양필수 뭐 들어야 돼?"):
@@ -741,15 +759,25 @@ def cmd_app():
                 at.query_params["dev"] = "1"
             return at.run()
 
-        def pick(at, univ=None, year=None, entry=None):
+        def pick(at, univ=None, year=None, entry=None, dept=True):
+            """대학·학번·입학 구분을 고른다. E24b: 학과는 처음에 비어 있으므로 dept=True(기본)면 그 학교 경영 계열 학과를 골라 기존 점검과 같게 한다.
+            dept=False면 학과를 안 고른 채(첫 화면 그대로), dept='이름'이면 그 학과(목록에 없으면 비워 둔다)."""
             if univ:
                 at.sidebar.selectbox(key="univ").set_value(univ)
                 at.run()
             if year is not None:
                 at.sidebar.selectbox(key="year").set_value(year)
+                at.run()
             if entry:
                 at.sidebar.radio(key="entry").set_value(entry)
             at.run()
+            if dept:
+                u_ = at.sidebar.selectbox(key="univ").value
+                sel_ = at.sidebar.selectbox(key=f"dept_{u_}")
+                d_ = S.BASE_DEPT[u_] if dept is True else dept
+                if d_ in sel_.options:
+                    sel_.set_value(d_)
+                    at.run()
             return at
 
         def nav(at, page):
@@ -930,30 +958,42 @@ def cmd_app():
             check(f"화면: {u}(T3) 영역별 미지원 한 줄 안내 + 총 100 → 졸업까지 남은 학점·참고 표", "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요." in html(at) and big(at) is not None
                   and expander(at, "참고") is not None and not at.exception and expander(at, "영역별 확인 (선택)") is None, str(big(at)))
         NO_AREA = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
-        at = pick(run(), "배재", 2023, "신입")
-        at.sidebar.radio(key="deptkind_배재").set_value("그 외 학과")
-        at.run()
+        at = pick(run(), "배재", 2023, "신입", dept=False)
         sel = at.sidebar.selectbox(key="dept_배재")
-        check("화면: [학과] '그 외 학과' 목록 맨 위는 '학과를 선택하세요'(기본값), 맨 아래는 '목록에 없는 학과 (대학 공통 기준)'",
-              sel.options[0] == "학과를 선택하세요" and sel.options[-1] == "목록에 없는 학과 (대학 공통 기준)" and sel.value == "학과를 선택하세요", str(sel.options[:2]))
-        for pg in ("remaining", "compare"):
+        check("화면: [E24b] 학과 selectbox는 처음에 비어 있고(index=None) 선택지는 학과들 + 맨 아래 '목록에 없는 학과 (대학 공통 기준)', 라디오는 없다",
+              sel.value is None and sel.placeholder == "학과를 검색하거나 고르세요" and sel.options[-1] == "목록에 없는 학과 (대학 공통 기준)" and "IT경영정보학과" in sel.options
+              and not any(r.key and r.key.startswith("deptkind_") for r in at.sidebar.radio), str(sel.options[:2]))
+        for pg, what in (("remaining", "내 졸업요건"), ("compare", "비교 결과")):
             nav(at, pg)
             h = html(at)
-            check(f"화면: [학과] 학과 미선택이면 {pg} 페이지에 계산·체크리스트·비교 없이 안내만", not at.exception and "학과(또는 계열)를 선택하세요" in h and big(at) is None
+            check(f"화면: [E24b] 학과 미선택이면 {pg} 페이지는 '왼쪽에서 학과를 고르면 {what}이 나와요.' 안내만(계산·체크리스트·비교 없음)", not at.exception and f"왼쪽에서 학과를 고르면 {what}이 나와요." in h and big(at) is None
                   and "학점 외 이수 요건" not in h and "<th>전공학점 합</th>" not in h and len(at.number_input) == 0 and "학과 미선택" in h, h[:60])
+        at = nav(at, "ask")
+        at.text_input(key="q_ask").set_value("재수강은 몇 학점까지 할 수 있어?")
+        at.run()
+        check("화면: [E24b] 학과 미선택이어도 규정 질문 페이지는 그대로 쓸 수 있다(학과 없이 대학 공통 기준으로 엔진 호출)", not at.exception and at.text_input(key="q_ask") is not None, "")
+        at = pick(run(), "목원", 2024, "신입", dept="응급구조학과")
+        check("화면: [E24b] 목원 2024에서 응급구조학과를 고르면 그 학과 기준이 나온다", at.sidebar.selectbox(key="dept_목원").value == "응급구조학과" and not at.exception)
+        at.sidebar.selectbox(key="year").set_value(2022)
+        at.run()
+        check("화면: [E24b] 학번을 2022로 바꾸면 새 목록에 없는 이전 학과(응급구조학과)는 빈칸으로 초기화(기본 학과로 되돌리지 않음)·안내가 나온다",
+              at.sidebar.selectbox(key="dept_목원").value is None and "응급구조학과" not in at.sidebar.selectbox(key="dept_목원").options and not at.exception)
+        at = pick(run(), "목원", 2024, "신입", dept="경영학부")
+        at.sidebar.selectbox(key="year").set_value(2023)
+        at.run()
+        check("화면: [E24b] 학번을 바꿔도 새 목록에 있는 학과(경영학부)는 그대로 유지", at.sidebar.selectbox(key="dept_목원").value == "경영학부")
+        at.sidebar.selectbox(key="univ").set_value("배재")
+        at.run()
+        check("화면: [E24b] 학교를 바꾸면 그 학교 학과 칸은 비어 있다(이전 학교 학과가 새 학교로 새지 않는다)", at.sidebar.selectbox(key="dept_배재").value is None and not at.exception)
         for u, y, want in (("배재", 2023, 130), ("배재", 2025, 127), ("충남", 2023, 130), ("한밭", 2023, 130), ("목원", 2022, 132), ("목원", 2023, 126)):
-            at = pick(run(), u, y, "신입")
-            at.sidebar.radio(key=f"deptkind_{u}").set_value("그 외 학과")
-            at.run()
+            at = pick(run(), u, y, "신입", dept="목록에 없는 학과 (대학 공통 기준)")
             at.sidebar.selectbox(key=f"dept_{u}").set_value("목록에 없는 학과 (대학 공통 기준)")
             at.run()
             nav(at, "remaining")
             h = html(at)
             check(f"화면: [학과] {u} {y} '목록에 없는 학과' → 대학 공통 졸업학점 {want}학점, 대학 공통 안내·영역별 미지원 한 줄", f"졸업학점 <b>{want}학점 이상</b>" in h and "대학 공통 기준이에요" in h and NO_AREA in h
                   and "목록에 없는 학과(대학 공통)" in h and "영역별 확인 (선택)" not in [e.label for e in at.expander] and not at.exception, h[:80])
-        at = pick(run(), "한남", 2023, "신입")
-        at.sidebar.radio(key="deptkind_한남").set_value("그 외 학과")
-        at.run()
+        at = pick(run(), "한남", 2023, "신입", dept=False)
         opts = at.sidebar.selectbox(key="dept_한남").options
         check("화면: [학과] 한남은 '목록에 없는 학과' 없이 계열 2개 + '학과가 속한 계열을 고르세요' 안내", "목록에 없는 학과 (대학 공통 기준)" not in opts and "인문사회계열" in opts and "이학·공학·예능·체능·간호계열" in opts
               and "학과가 속한 계열을 고르세요" in texts(at.sidebar.caption), str(opts))
@@ -985,10 +1025,7 @@ def cmd_app():
               "✅" not in h and "✓" not in h and "b-req" in h and "학점 외 이수 요건" in h and ("확인 불가 · 학과 확인" in h or "b-none" in h or "b-na" in h), h[:80])
         # 학사 선택 비교: 페이지 값이 S.compare 결과와 같다(하드코딩 없음)
         for u, y, d in (("배재", 2024, None), ("한남", 2023, None), ("목원", 2022, "경영학부")):
-            at = pick(run(), u, y, "신입")
-            if d:
-                at.sidebar.radio(key=f"deptkind_{u}").set_value(f"{d} (경영 계열)")
-                at.run()
+            at = pick(run(), u, y, "신입", dept=d or True)
             r = S.compare(u, y, S.BASE_DEPT[u])
             at2 = nav(at, "compare")
             h2 = html(at2)

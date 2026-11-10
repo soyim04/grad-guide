@@ -28,7 +28,7 @@ DEV_PAGE = ("dev", "개발자 · 로그")
 ROUTE_LABEL = {"조회": "기준표 조회", "계산": "기준표 계산", "규정 검색": "규정 검색", "범위 밖": "범위 확인"}
 KIND_BADGE = {"요건": ("req", "요건"), "없음": ("none", "없음"), "확인불가": ("warn", "확인 불가 · 학과 확인"), "해당없음": ("na", "해당 없음"), "안내": ("info", "안내")}
 DISCLAIMER = "2022~2026학번 기준 · 최종 확인은 학과 사무실에서"
-PLACEHOLDER_DEPT = "학과를 선택하세요"
+PLACEHOLDER_DEPT = "학과를 검색하거나 고르세요"  # E24b: 학과 selectbox는 처음에 비어 있고 이 문구만 보인다(경영 학과를 미리 골라 두지 않는다)
 GENERIC_DEPT = "목록에 없는 학과 (대학 공통 기준)"
 NO_AREA_NOTICE = "이 학과는 영역별 계산을 지원하지 않아요. 총 학점만 계산해요."
 
@@ -96,11 +96,11 @@ def ctx_of(sc):
     return f"{sc['univ']}|{sc['year']}|{sc['dept'] or sc.get('dept_state')}"
 
 
-def need_dept(sc):
-    """'그 외 학과'를 골랐는데 학과를 아직 안 골랐으면 계산·체크리스트·비교를 숨기고 안내만 보여 준다"""
+def need_dept(sc, what="내 졸업요건"):
+    """학과를 아직 안 골랐으면 계산·체크리스트·비교를 숨기고 짧은 안내만 보여 준다(E24b)"""
     if sc.get("dept_state") != "unselected":
         return True
-    md(U.callout("info", "왼쪽에서 학과(또는 계열)를 선택하세요. 학과마다 졸업학점이 달라요."))
+    md(U.callout("info", f"왼쪽에서 학과를 고르면 {what}이 나와요."))
     return False
 
 
@@ -131,25 +131,23 @@ def sidebar():
     univ = sb.selectbox("대학", UNIVS, key="univ")
     year_choice = sb.selectbox("학번(입학년도)", YEAR_CHOICES, format_func=lambda y: f"{y}학번" if isinstance(y, int) else y, key="year")
     base = S.BASE_DEPT[univ]
-    others = [t for t in S.grad_targets(univ) if t != base]
-    kind = sb.radio("학과", [f"{base} (경영 계열)", "그 외 학과"], key=f"deptkind_{univ}")
-    if kind.startswith(base) or not others:
-        dept, dept_state = base, "base"
+    # E24b: 그 학번에 기준 행이 있는 학과만(묶음 행은 학과 하나하나) 검색 가능한 selectbox 하나. 처음엔 비어 있다.
+    # 목록 맨 아래: 단과대학·계열 대체 선택지, (한남 제외) '목록에 없는 학과 (대학 공통 기준)'. 한남은 대학 공통 행이 없어 계열을 대체로 쓴다.
+    depts, alts = S.dept_choices(univ, year_choice if isinstance(year_choice, int) else None)
+    generic_ok = univ != "한남"
+    options = [*depts, *alts, *([GENERIC_DEPT] if generic_ok else [])]
+    dkey = f"dept_{univ}"
+    if st.session_state.get(dkey) not in (None, *options):  # 학교·학번을 바꿔 이전 학과가 새 목록에 없으면 빈칸으로(기본 학과로 되돌리지 않는다)
+        st.session_state[dkey] = None
+    pick = sb.selectbox("학과", options, index=None, placeholder=PLACEHOLDER_DEPT, key=dkey)
+    if not generic_ok:
+        sb.caption("한남은 졸업학점이 계열별로 달라요. 목록에 없는 학과는 학과가 속한 계열을 고르세요.")
+    if pick is None:
+        dept, dept_state = None, "unselected"
+    elif pick == GENERIC_DEPT:
+        dept, dept_state = None, "generic"
     else:
-        # 한남은 졸업학점이 계열 단위라 대학 공통 행이 없어 '목록에 없는 학과'를 두지 않는다. E26: 학과를 기본으로 고르고, 계열은 목록에 없는 학과의 대체용으로 맨 아래에 둔다
-        generic_ok = univ != "한남"
-        if not generic_ok:
-            others = [t for t in others if not t.endswith("계열")] + [t for t in others if t.endswith("계열")]
-        options = [PLACEHOLDER_DEPT, *others, *([GENERIC_DEPT] if generic_ok else [])]
-        pick = sb.selectbox("학과·계열 선택", options, key=f"dept_{univ}")
-        if not generic_ok:
-            sb.caption("한남은 졸업학점이 계열별로 달라요. 목록에 없는 학과는 학과가 속한 계열을 고르세요.")
-        if pick == PLACEHOLDER_DEPT:
-            dept, dept_state = None, "unselected"
-        elif pick == GENERIC_DEPT:
-            dept, dept_state = None, "generic"
-        else:
-            dept, dept_state = pick, "picked"
+        dept, dept_state = pick, "picked"
     entry =sb.radio("입학 구분", S.ENTRY_TYPES, horizontal=True, key="entry")
     transfer_grade = None
     if entry == "편입" and S.uses_transfer_grade(univ):  # 배재 일반편입: 편입 학년에 따라 전공 기준이 다르다(E15)
@@ -651,7 +649,7 @@ def compare_conclusion_html(r):
 
 def page_compare(sc):
     page_title("학사 선택 비교", "부전공 ↔ 복수·다전공. 전공학점 합 = 주전공 요구 학점 + 추가로 이수할 학점")
-    if not need_year(sc) or not need_dept(sc):
+    if not need_year(sc) or not need_dept(sc, "비교 결과"):
         return
     univ, year, dept = sc["univ"], sc["year"], sc["dept"]
     generic_note(sc)

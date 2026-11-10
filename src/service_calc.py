@@ -116,6 +116,25 @@ def grad_targets(univ):
     return sorted(names)
 
 
+def dept_choices(univ, year=None):
+    """E24b 사이드바 학과 선택 목록. 그 학번(2022~2026)에 졸업학점 행(또는 영역 기준 행)이 있는 대상만, 묶음 행은 학과 하나하나로 펼쳐서.
+    반환: (학과 목록 가나다순, 대체 선택지[단과대학·계열 단위 대상] 가나다순). 학번이 정수가 아니면 2022~2026 합집합."""
+    years = [year] if isinstance(year, int) and 2022 <= year <= 2026 else list(range(2022, 2027))
+    names, alt = set(), set()
+    for r in L.CRITERIA:
+        if r["대학"] != univ or r["기준값여부"] != "기준" or r["대상"] == "전체":
+            continue
+        if not (r["항목"] == "졸업학점" or (univ in AREA_UNIVS and _detail(r["항목"]))):
+            continue
+        if not any(L.in_range(r, y) for y in years):
+            continue
+        for t in L.targets_of(r):
+            names.add(t)
+            if r["대상단위"] in ("단과대학", "계열") or t.endswith(("계열", "대학")):
+                alt.add(t)
+    return sorted(names - alt), sorted(alt)
+
+
 def graduation_row(univ, dept, year, method=None):
     """총 졸업학점 행 하나(이수 방식 행 우선, 없으면 이수유형이 빈 공통 행: 규칙 11). 없거나 여러 개면 None"""
     method = method or default_method(univ, year, dept)
