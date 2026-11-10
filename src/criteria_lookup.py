@@ -6,7 +6,7 @@
     졸업학점 / 평점_최저 / 수강상한_학기 / 부전공(이수학점 + 부전공시 주전공 학점) / 복수전공(이수학점 + 복수전공시 주전공 학점)
 - 계산·비교 단서("비교", "중에", "더 적", "심화" 등)가 있으면 조회 안 함 → RAG
 - 행은 기준값여부=기준만, 학번 구간에 맞는 것. 학번이 여러 개면 학번마다 조회. 학번이 없으면 구간과 무관하게 모두
-- 학과를 지목하면 그 대상 행(대상 이름의 단어 단위 일치), 아니면 대학 전체 행. 지목한 학과에 맞는 행이 없으면 조회 안 함 → RAG
+- 학과를 지목하면 그 대상 행(대상 이름의 단어 단위 일치, E22b: 글자 경계 규칙 `target_mentioned`), 아니면 대학 전체 행. 지목한 학과에 맞는 행이 없으면 조회 안 함 → RAG
 - 묶음(부전공·복수전공)의 한쪽 항목에 행이 없으면 조회 안 함 → RAG
 - 이수유형이 교직·심화인 행은 질문에 '교직'이 없으면 뺀다
 LLM에는 값·출처뿐 아니라 그 행의 조건·비고·상태도 함께 넘긴다 (관리용 메모 '평가셋 …' 문장은 뺀다).
@@ -35,6 +35,29 @@ def norm(s):
     s = re.sub(r"\([^)]*\)", "", s)
     s = re.sub(r"\s|·", "", s)
     return re.sub(r"(학과|학부|전공)$", "", s)
+
+
+_PARTICLE = r"(?:이랑|에서|으로|[은는이가을를의도에와과로만랑])?"
+
+
+def target_mentioned(target, question):
+    """질문이 행의 대상 이름을 말했는가(E22b). 글자 경계에서만 걸린다: 앞은 한글이 아니고, 뒤는 한글이 아니되 조사·접미어(학과·학부·전공·과)는 허용.
+    비교 이름은 괄호를 뺀 전체 이름, 접미어를 뗀 이름(2자 이상), '이학·공학…계열'은 부분+'계열'. 옛 규칙(norm 부분 문자열)은
+    '교육'이 '기계금속공학교육과' 안에 걸리고 '의'·'약'·'및' 같은 한 글자가 아무 질문에나 걸렸다."""
+    q = re.sub(r"\([^)]*\)", "", question)
+    pats = []
+    for t in target.split():
+        stem = norm(t)
+        if not stem:
+            continue
+        full = re.sub(r"\([^)]*\)", "", t).strip()
+        if len(full) >= 2:
+            pats.append(re.escape(full))
+        if len(stem) >= 2:
+            pats.append(re.escape(stem) + r"(?:학과|학부|전공|과)?")
+        if full.endswith("계열") and "·" in full:
+            pats += [re.escape(p) + "계열" for p in full[:-2].split("·") if p]
+    return any(re.search(rf"(?<![가-힣])(?:{p}){_PARTICLE}(?![가-힣])", q) for p in pats)
 
 
 def items_for(q):
@@ -89,7 +112,7 @@ def lookup(question):
                 cand = [r for r in cand if in_range(r, year)]
             if item in sum(BUNDLE.values(), []) and "교직" not in question:
                 cand = [r for r in cand if "교직" not in r["이수유형"]]
-            spec = [r for r in cand if r["대상"] != "전체" and any(norm(t) and norm(t) in norm(question) for t in r["대상"].split())]
+            spec = [r for r in cand if r["대상"] != "전체" and target_mentioned(r["대상"], question)]
             if spec:
                 cand, any_spec = spec, True
             else:

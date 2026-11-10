@@ -30,7 +30,7 @@ A_ITEMS = {
 def _cand_spec(univ, item, year, q):
     cand = [r for r in L.CRITERIA if r["대학"] == univ and r["항목"] == item and r["기준값여부"] == "기준"
             and (year is None or L.in_range(r, year)) and "교직" not in r["이수유형"]]
-    spec = [r for r in cand if r["대상"] != "전체" and any(L.norm(t) and L.norm(t) in L.norm(q) for t in r["대상"].split())]
+    spec = [r for r in cand if r["대상"] != "전체" and L.target_mentioned(r["대상"], q)]
     return cand, spec
 
 
