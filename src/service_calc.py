@@ -378,7 +378,10 @@ def compare(univ, year, dept):
         diff = abs(a["total"] - b["total"])
         less = None if diff == 0 else (a["name"] if a["total"] < b["total"] else b["name"])
     rows = [r for t in table for r in (t["major"], t["extra"]) if r]
-    return {"ok": True, "full": full, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,
+    # 범위로 정해진 값(값_최대 있음)은 가장 작은 값으로 더했다. 합이 최저값 기준임을 화면에 알린다(E20 데이터 보완, 한밭 융합경영학과 HB-011·HB-023)
+    floor_note = ("범위로 정해진 값은 가장 작은 값(최저값) 기준으로 더했어요. 학과 확인 필요."
+                  if any(r["값_최대"] for r in rows) else "")
+    return {"ok": True, "full": full, "floor_note": floor_note, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,
             "notes": [r["비고"] for r in rows if "선택 불가" in r["비고"]],
             "question": compare_question(univ, year, dept), "department_hint": dept}
 

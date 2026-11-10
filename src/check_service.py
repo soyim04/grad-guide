@@ -248,6 +248,19 @@ def cmd_logic():
         check(f"회귀 E16: {u} {y} 부전공↔다전공 질문 경로(계산) 결과 {want} = S.compare 결과", res is not None and got == want == [t["total"] for t in cmp_["table"]] and used, f"{q} {got}")
     check("회귀 E16: 학과를 안 적은 배재 질문(주전공 학점이 학과 한정 행뿐)은 여전히 RAG로 폴백(P04와 같음)",
           criteria_calc.calc("배재대 2024학번은 부전공이랑 다전공 중에 전공학점이 더 적게 드는 건 뭐야?")[0] is None)
+    # 1-1d. 회귀 사례(E20 데이터 보완, 한밭 융합경영학과 주전공 요구 학점 HB-023·024 잠정)
+    for y in (2022, 2024, 2026):
+        q, used = engine.choose_question("부전공이랑 복수전공 중 뭐가 전공학점이 적어?", "한밭", y, "융합경영학과")
+        res = criteria_calc.calc(q)[0]
+        cmp_ = S.compare("한밭", y, "융합경영학과")
+        got = list(res["values"].values()) if res else None
+        check(f"회귀 E20: 한밭 {y} 융합경영학과 부전공↔복수전공 계산 [57, 72] = S.compare, 최저값 안내가 붙음",
+              res is not None and got == [57.0, 72.0] == [t["total"] for t in cmp_["table"]] and "최저값" in cmp_["floor_note"], f"{q} {got} {cmp_.get('floor_note')}")
+    check("회귀 E20: 한밭 복수전공 몇 학점은 조회(HB-011 이수학점 + HB-023 주전공 학점)",
+          sorted(rows_of("한밭대 2024학번 융합경영학과 학생: 복수전공은 몇 학점 이수해야 해?") or []) == ["HB-011", "HB-023"])
+    check("회귀 E20: 학과를 안 적은 한밭 복수전공 질문은 주전공 행이 학과 한정이라 여전히 RAG",
+          rows_of("한밭대 2024학번 학생: 복수전공은 몇 학점 이수해야 해?") is None)
+    check("회귀 E20: 범위 값이 없는 대학(목원)은 최저값 안내가 붙지 않음", not S.compare("목원", 2023, "경영학부").get("floor_note"))
     q, used = engine.choose_question("혁신교육과미래설계 꼭 들어야 해?", "배재", 2025, "IT경영정보학과")
     check("한계 E13: 과목명 필수 여부(BJ-032 혁신교육과미래설계)는 조회 항목이 아니라 RAG로 간다(이번에 고치지 않음)", rows_of(q) is None and not engine.routable(q), q)
     # 1-1c. 편입 학번 안내(사이드바, 2026-11-09 조사)와 체크리스트 안내 규칙

@@ -130,11 +130,11 @@
   "  X01 RAG 폴백(대학이 0개 또는 여러 개)",
   "  X01 인용 [1] 혼입 0/0",
   "  X03 계산(B) 행 ['CN-076', 'HN-008', 'HB-017'] 값 {'충남': 1.75, '한남': 2.0, '한밭': 1.7} 인용 [1]",
-  "저장: eval\\results\\2026-11-09_dev_base-rag_gpt-6-luna_snapcheck.csv\n답변 토큰 0/0 $0.00000, 질문 임베딩 0토큰 $0.000000"
+  "저장: eval\\results\\2026-11-10_dev_base-rag_gpt-6-luna_snapcheck.csv\n답변 토큰 0/0 $0.00000, 질문 임베딩 0토큰 $0.000000"
  ],
  "rows": [
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "B03",
    "k": "",
    "llm_call": {
@@ -163,7 +163,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "H02",
    "k": "",
    "llm_call": {
@@ -192,7 +192,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "H03",
    "k": "",
    "llm_call": {
@@ -308,7 +308,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "H09",
    "k": "",
    "llm_call": {
@@ -337,7 +337,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "H10",
    "k": "",
    "llm_call": {
@@ -424,7 +424,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "T01",
    "k": "",
    "llm_call": {
@@ -569,7 +569,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "T08",
    "k": "",
    "llm_call": {
@@ -598,7 +598,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "T09",
    "k": "",
    "llm_call": {
@@ -685,7 +685,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "B06",
    "k": "",
    "llm_call": {
@@ -714,7 +714,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "B08",
    "k": "",
    "llm_call": {
@@ -743,7 +743,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "M01",
    "k": "",
    "llm_call": {
@@ -772,7 +772,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "M02",
    "k": "",
    "llm_call": {
@@ -859,7 +859,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "M05",
    "k": "",
    "llm_call": {
@@ -888,7 +888,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "M07",
    "k": "",
    "llm_call": {
@@ -917,7 +917,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "M08",
    "k": "",
    "llm_call": {
@@ -946,7 +946,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "B02",
    "k": "",
    "llm_call": {
@@ -1149,7 +1149,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "C06",
    "k": "",
    "llm_call": {
@@ -1178,7 +1178,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "C08",
    "k": "",
    "llm_call": {
@@ -1323,7 +1323,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "B07",
    "k": "",
    "llm_call": {
@@ -1497,7 +1497,7 @@
    "혼입_합계": "0/5"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "P02",
    "k": "",
    "llm_call": {
@@ -1584,7 +1584,7 @@
    "혼입_합계": "0/0"
   },
   {
-   "chunks_sha256": "e0e6c5da845ce901d36344be21877e14835ae10d1a41bb6ec9a25d7e93185cca",
+   "chunks_sha256": "b2c9f49924df1d9e703323812f27db6612b62c059a51eeb8c603983ce80d24c1",
    "id": "X03",
    "k": "",
    "llm_call": {

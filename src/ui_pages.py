@@ -642,6 +642,8 @@ def card_compare_home(sc):
             return
         md(compare_table_html(r))
         md(compare_conclusion_html(r))
+        if r.get("floor_note"):
+            md(U.callout("info", U.esc(r["floor_note"])))
         md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
         if S.explain_question(sc["univ"], sc["year"], sc["dept"]):  # 설명 질문이 만들어지는 조건에서만(한남 2023~·목원 등)
             st.button("AI 설명 듣기", key="home_to_cmp", on_click=goto, args=("compare",), width="stretch")
@@ -662,6 +664,8 @@ def page_compare(sc):
     with st.container(key="card_cmp_main"):
         md(compare_table_html(r))
         md(compare_conclusion_html(r))
+        if r.get("floor_note"):
+            md(U.callout("info", U.esc(r["floor_note"])))
         for n in r["notes"]:
             md(U.callout("info", U.esc(n)))
         md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
