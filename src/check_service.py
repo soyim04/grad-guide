@@ -264,6 +264,12 @@ def cmd_logic():
           r_it == ["BJ-046", "BJ-047", "BJ-048", "BJ-003"] and r_pol == ["BJ-046", "BJ-047", "BJ-048", "BJ-001"], str((r_it, r_pol)))
     check("E32b: 배재 수강상한에 붙는 졸업학점 행(BJ-001·BJ-003)의 비고에는 배지 문구('학과 확인 필요'·'사유 미확인')가 없다 — 경찰법학부 2023 질문에 '출처마다 값이 달라요' 배지가 뜨지 않는다(서비스 점검 30번)",
           not any(k in L.BY_ID[i]["비고"] for i in r_pol + r_it for k in engine.FLAG_NOTE) and "AI·SW창의융합대학" in L.BY_ID["BJ-001"]["비고"], str([i for i in r_pol + r_it if any(k in L.BY_ID[i]["비고"] for k in engine.FLAG_NOTE)]))
+    r_ai = rows4("배재대 2023학번 전자공학과 학생: 한 학기에 몇 학점까지 신청할 수 있어?")
+    r_ai25 = rows4("배재대 2025학번 전자공학과 학생: 한 학기에 몇 학점까지 신청할 수 있어?")
+    need = lambda ids: [i for i in ids if L.BY_ID[i]["상태"] == "잠정" or any(k in L.BY_ID[i]["비고"] for k in engine.FLAG_NOTE)]
+    check("E32c: 배재 AI·SW창의융합대학 학과(2022~2024)는 졸업학점 BJ-232(잠정)가 붙어 배지가 뜨고, 경찰법학부·IT경영정보는 안 뜨며, 2025~ 학번은 대학 공통 BJ-002(127 확정)로 배지가 없다",
+          r_ai[-1:] == ["BJ-232"] and "BJ-001" not in r_ai and need(r_ai) == ["BJ-232"] and need(r_pol) == [] and need(r_it) == []
+          and r_ai25[-1:] == ["BJ-002"] and need(r_ai25) == [] and L.BY_ID["BJ-232"]["값"] == "130" and L.BY_ID["BJ-002"]["값"] == "127", str((r_ai, r_ai25)))
     check("E31 [4]: 조건이 졸업학점에 걸리지 않은 수강상한 행(한밭 HB-018)은 졸업학점 행을 덧붙이지 않는다(dev T09·C08 경로 불변)", r_hb == ["HB-018"], str(r_hb))
     check("E31 [3] 보강: 평점이 있어도 신청 학점을 묻는 질문은 수강상한 조회", ifor("평점 4.3이면 몇 학점까지 신청돼?") == ["수강상한_학기"])
     # 1. 사이드바 값은 질문에 없을 때만 붙인다 (질문 우선)
