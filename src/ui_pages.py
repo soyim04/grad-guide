@@ -465,9 +465,9 @@ def reference_lines(plan, rem):
 
 
 ACCESS_GUIDE = {"배재": "학교 포털 '졸업자가진단' → 이수현황 표의 '소계'를 넣으세요."}
-ACCESS_GUIDE_DEFAULT = "학교 포털의 졸업사정(졸업 자가진단) 메뉴에서 확인하세요."
+ACCESS_GUIDE_DEFAULT = "학교 포털의 졸업 관련 메뉴에서 확인하세요."
 KIDS_GUIDE = {"배재": "영역별 학점은 학교 포털 '졸업자가진단'에서 볼 수 있어요. 모르면 비워 두세요."}
-KIDS_GUIDE_DEFAULT = "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요."
+KIDS_GUIDE_DEFAULT = "영역별 학점은 학교 포털의 졸업 관련 메뉴에서 확인하세요. 모르면 비워 두세요."
 
 
 SINGLE_NOTE = "복수전공·부전공을 하지 않을 때(단수전공) 기준이에요."

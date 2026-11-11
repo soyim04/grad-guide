@@ -1206,7 +1206,7 @@ def cmd_app():
             check(f"화면: [E22] 시작하기 상황 버튼 {key} → '{want}' 페이지(질문 미리 채우기 없음)", not at.exception and at.session_state["page"] == ("compare" if want == "학사 선택 비교" else "ask")
                   and (not at.text_input or at.text_input(key="q_ask").value == ""))
         KIDS_WANT = {"배재": "영역별 학점은 학교 포털 '졸업자가진단'에서 볼 수 있어요. 모르면 비워 두세요.",
-                     "충남": "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요.", "목원": "영역별 학점은 학교 포털 졸업사정(졸업 자가진단) 메뉴에서 확인하세요. 모르면 비워 두세요."}
+                     "충남": "영역별 학점은 학교 포털의 졸업 관련 메뉴에서 확인하세요. 모르면 비워 두세요.", "목원": "영역별 학점은 학교 포털의 졸업 관련 메뉴에서 확인하세요. 모르면 비워 두세요."}
         for u_, y_ in (("배재", 2023), ("배재", 2025), ("충남", 2024), ("목원", 2023)):
             at = nav(pick(run(), u_, y_, "신입"), "remaining")
             cx_ = f"{u_}|{y_}|{S.BASE_DEPT[u_]}"
@@ -1251,8 +1251,8 @@ def cmd_app():
               "교양 (단수)" in h3 and "전공 (융합전공)" in h3 and "복수전공·부전공을 하지 않을 때" not in h3)
         at = nav(pick(run(), "배재", 2023, "신입"), "remaining")
         e = [x for x in at.expander if x.label == "내 이수 학점은 어디서 보나요?"]
-        check("화면: [E19] 배재 이수 학점 안내(졸업자가진단·소계), 목원은 졸업사정(졸업 자가진단) 안내", len(e) == 1 and "졸업자가진단" in texts(e[0].markdown) and "소계" in texts(e[0].markdown)
-              and "졸업사정(졸업 자가진단)" in texts([x for x in nav(pick(run(), "목원", 2023, "신입"), "remaining").expander if x.label == "내 이수 학점은 어디서 보나요?"][0].markdown))
+        check("화면: [E19] 배재 이수 학점 안내(졸업자가진단·소계), 목원은 일반 문구 안내", len(e) == 1 and "졸업자가진단" in texts(e[0].markdown) and "소계" in texts(e[0].markdown)
+              and "학교 포털의 졸업 관련 메뉴에서 확인하세요." in texts([x for x in nav(pick(run(), "목원", 2023, "신입"), "remaining").expander if x.label == "내 이수 학점은 어디서 보나요?"][0].markdown))
         at = nav(pick(run(), "목원", 2023, "신입"), "remaining")
         at.number_input(key="tot|목원|2023|경영학부").set_value(100).run()
         check("화면: [E19] 목원(배재 외)은 개설 과목 연결 버튼 없이 '배재대에서 시범 제공 중' 한 줄", not [k for k in keys_of(at) if k.startswith("crs_go")] and "개설 과목 연결은 배재대에서 시범 제공 중이에요." in html(at))
