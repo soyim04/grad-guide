@@ -730,7 +730,7 @@ def page_compare(sc):
     if ex and ex[0] and ex[0]["question_used"] == q:
         show_answer(ex[0], ex[1], key=f"explain{ex[1]}")
     if q is None:
-        st.caption("이 조건은 설명 질문이 만들어지지 않아 위 표만 보여 드려요.")
+        st.caption("이 조건은 표만 보여 드려요.")
 
 
 # ---------- 이번 학기 개설 과목(자리만) ----------

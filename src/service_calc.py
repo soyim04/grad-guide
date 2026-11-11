@@ -438,16 +438,21 @@ def MOKWON_COMPARE_NOTES(univ, year, rows):
 def compare(univ, year, dept):
     """부전공 ↔ 복수·다전공 전공학점 비교(전공학점 합 = 주전공 요구 학점 + 이수 학점). 행은 스키마 규칙 8로 항목마다 고른다.
     주전공 학점 행이 없으면 그 쪽 합은 계산하지 않고 '확인 불가'로 둔다(학과 확인 필요). 반환 dict(ok, table[], diff, less, ...)"""
-    table, reasons = [], []
+    table, reasons, raw = [], [], []
     for key, major_item, extra_item in SIDES:
         name = "부전공" if key == "부전공" else ("다전공" if univ in ("배재", "한남") else "복수전공")
         major, why_major = _one(univ, dept, year, major_item)
         extra, why_extra = _one(univ, dept, year, extra_item)
         total = float(major["값"]) + float(extra["값"]) if major and extra else None
-        for why, label in ((why_major, f"{name}의 주전공 요구 학점"), (why_extra, f"{name}의 이수 학점")):
+        for why, label, kind in ((why_major, "주전공 요구 학점", "major"), (why_extra, "이수 학점", "extra")):
             if why:
-                reasons.append(f"{label}: {why}")
+                raw.append((why, name, label))
         table.append({"name": name, "major": major, "extra": extra, "total": total})
+    # 같은 사유·같은 항목은 한 줄로 합친다('부전공·복수전공의 주전공 요구 학점: …', E32f)
+    grouped = {}
+    for why, name, label in raw:
+        grouped.setdefault((why, label), []).append(name)
+    reasons = [f"{'·'.join(names)}의 {label}: {why}" for (why, label), names in grouped.items()]
     if not any(t["extra"] for t in table):
         return {"ok": False, "why": "; ".join(reasons), "question": compare_question(univ, year, dept)}
     full = all(t["total"] is not None for t in table)
@@ -459,7 +464,7 @@ def compare(univ, year, dept):
     rows = [r for t in table for r in (t["major"], t["extra"]) if r]
     # 범위로 정해진 값(값_최대 있음)은 가장 작은 값으로 더했다. 합이 최저값 기준임을 화면에 알린다(E20 데이터 보완, 한밭 융합경영학과 HB-011·HB-023)
     floor_note = ("범위로 정해진 값은 가장 작은 값(최저값) 기준으로 더했어요. 학과 확인 필요."
-                  if any(r["값_최대"] for r in rows) else "")
+                  if full and any(r["값_최대"] for r in rows) else "")  # 합을 못 구한 쪽이 있으면 '합을 비교하지 않았어요'만 보이게 최저값 안내는 뺀다(E32f)
     notes = [n for n in (display_note(r["비고"]) for r in rows if "선택 불가" in r["비고"]) if n]
     notes += MOKWON_COMPARE_NOTES(univ, year, rows)
     return {"ok": True, "full": full, "floor_note": floor_note, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,

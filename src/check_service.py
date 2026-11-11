@@ -661,6 +661,22 @@ def cmd_logic():
           v23 == want and v24 == want and v25 == want and S.MOKWON_EXPLAIN_NOTE in n23 and S.MOKWON_EXPLAIN_NOTE in n24 and S.MOKWON_SPECIAL_NOTE in n23
           and S.MOKWON_EXPLAIN_NOTE not in n25 and S.MOKWON_SPECIAL_NOTE in n25 and "51" in S.MOKWON_SPECIAL_NOTE and "50" in S.MOKWON_SPECIAL_NOTE
           and not any("해설" in x for x in S.compare("한남", 2023, "경영정보학과")["notes"]), str((v23, v25)))
+    def _hb(y, d):
+        r_ = S.compare("한밭", y, d)
+        return r_, [t_["total"] for t_ in r_["table"]] if r_.get("ok") else None
+    ok_hb = True
+    det = []
+    for y_, d_ in ((2023, "경제학과"), (2022, "공공행정학과"), (2024, "산업디자인학과"), (2025, "기계공학과"), (2026, "화학생명공학과")):
+        r_, tot = _hb(y_, d_)
+        det.append((y_, d_, tot))
+        ok_hb &= tot == [57.0, 72.0] and "최저값" in r_["floor_note"] and r_["less"] == "부전공" and r_["diff"] == 15
+    r_ar, tot_ar = _hb(2023, "건축학과(5년제)")
+    r_in, _ = _hb(2023, "국제학부")
+    check("한밭 비교(E-A): 계열 묶음 학과(경제·공공행정·산업디자인·기계·화학생명)는 부전공 36+21=57 / 복수 36+36=72(최저값 안내, 잠정), 건축학과는 기본전공 65 기준 86 / 101", ok_hb and tot_ar == [86.0, 101.0], str((det, tot_ar)))
+    check("한밭 비교(E-A): 국제학부는 주전공 행이 없어 합을 비교하지 않고, 최저값 안내가 안 붙으며, 같은 사유는 한 줄로 합쳐 보인다",
+          (not r_in.get("ok") or (not r_in["full"] and not r_in["floor_note"] and len(r_in["reasons"]) == len(set(x.split(": ", 1)[1] for x in r_in["reasons"])) )), str(r_in.get("reasons") or r_in.get("why")))
+    check("한밭 비교(E-A): 새 주전공 행은 잠정·기준이고 비고에 배지 문구(학과 확인 필요)가 없다(잠정 배지만 뜬다)",
+          all(L.BY_ID["HB-%03d" % n_]["상태"] == "잠정" and not any(k in L.BY_ID["HB-%03d" % n_]["비고"] for k in engine.FLAG_NOTE) for n_ in range(79, 99)), "")
     check("목원 비교(E-C): 응급구조학과 2026 주전공 33·54는 잠정 행(MW-363·364)", v26e == want and [L.BY_ID[i]["상태"] for i in ("MW-363", "MW-364")] == ["잠정", "잠정"], str(v26e))
     r, v = totals("한남", 2023, "경영정보학과")
     check("비교 H10(한남 2023): 부전공 66·다전공 72, 부전공이 6학점 적음", v == [66, 72] and r["less"] == "부전공" and r["diff"] == 6, str(v))
