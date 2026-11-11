@@ -82,7 +82,7 @@ def snapshot():
     R.log_usage = lambda *a, **k: None
     log_lines = []
     builtins.print = lambda *a, **k: log_lines.append(" ".join(str(x) for x in a))
-    args = argparse.Namespace(chunks="", collection="", filter=True, expand=True, lookup=True, lookup_prompt="v2", calc=True, prompt="v2",
+    args = argparse.Namespace(chunks="", collection="", filter=True, expand=True, lookup=True, lookup_prompt="v3", calc=True, prompt="v2",
                               ids="", limit=0, tag="snapcheck")
     try:
         R.cmd_answer(args)
@@ -187,10 +187,10 @@ def cmd_equiv(write_baseline=False):
     note = f" · {attempts}번째 시도에 통과(마지막 순위가 흔들린 문항 {sorted(noisy)})" if ok and attempts > 1 else ""
     check(f"파이프라인 동치: 문항 {len(old)}개 · 경로 {routes}" + note, ok, f"불일치 {hard[:5]}")
     hashes = {"answer-v1": R.prompt_hash(R.ANSWER_SYSTEM), "answer-v2": R.prompt_hash(R.ANSWER_SYSTEM_V2), "lookup-v1": R.prompt_hash(R.LOOKUP_SYSTEM),
-              "lookup-v2": R.prompt_hash(R.LOOKUP_SYSTEM_V2), "calc-v1": R.prompt_hash(R.CALC_SYSTEM), "judge-v2": R.prompt_hash(R.JUDGE_SYSTEM)}
-    expected = {"answer-v1": "151fc2fa1a4b", "answer-v2": "95af4a805902", "lookup-v1": "aa2dd09cd98b", "lookup-v2": "2085142f4358",
+              "lookup-v2": R.prompt_hash(R.LOOKUP_SYSTEM_V2), "lookup-v3": R.prompt_hash(R.LOOKUP_SYSTEM_V3), "calc-v1": R.prompt_hash(R.CALC_SYSTEM), "judge-v2": R.prompt_hash(R.JUDGE_SYSTEM)}
+    expected = {"answer-v1": "151fc2fa1a4b", "answer-v2": "95af4a805902", "lookup-v1": "aa2dd09cd98b", "lookup-v2": "2085142f4358", "lookup-v3": "93e8bf1da70f",
                 "calc-v1": "fa46be364a36", "judge-v2": "f06259a59823"}
-    check("프롬프트 해시 6종 불변", hashes == expected, str(hashes))
+    check("프롬프트 해시 7종 불변", hashes == expected, str(hashes))
 
 
 # ---------- 서비스 로직 ----------

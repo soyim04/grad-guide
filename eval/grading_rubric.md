@@ -5,7 +5,7 @@
 
 | 항목 | 값 |
 |---|---|
-| 답변 프롬프트 | `answer-v1`, sha256 앞 12자 `151fc2fa1a4b` (실험 9용 `answer-v2` `95af4a805902`는 `--prompt v2`로만 쓰고, 기준선은 v1 그대로. 조회 경로 `lookup-v1` `aa2dd09cd98b`는 기준선 그대로, 실험 10용 `lookup-v2` `2085142f4358`은 `--lookup-prompt v2`로만 씀) |
+| 답변 프롬프트 | `answer-v1`, sha256 앞 12자 `151fc2fa1a4b` (실험 9용 `answer-v2` `95af4a805902`는 `--prompt v2`로만 쓰고, 기준선은 v1 그대로. 조회 경로 `lookup-v1` `aa2dd09cd98b`는 기준선 그대로, 실험 10용 `lookup-v2` `2085142f4358`은 `--lookup-prompt v2`로만 씀, 실험 29용 `lookup-v3` `93e8bf1da70f`는 `--lookup-prompt v3`, 서비스 기본) |
 | 판정 프롬프트 | `judge-v1`→`judge-v2`, sha256 앞 12자 `f06259a59823` (문구 동일. 1차 `JUDGE_SYSTEM` 구조를 졸업요건용으로 고침) |
 | 답변 모델 / 판정관 | gpt-6-luna / gpt-6-luna (같은 모델이 자기 답을 채점하므로 사람 최종 판정 51문항 전부 + 일치율 기록) |
 | 검색 | 질문 임베딩(text-embedding-3-small) → Chroma `base-text-embedding-3-small` 상위 k=5, 메타데이터 필터 없음 |

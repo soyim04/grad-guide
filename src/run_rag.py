@@ -136,6 +136,15 @@ LOOKUP_SYSTEM_V2 = LOOKUP_SYSTEM.replace(
     1)
 assert LOOKUP_SYSTEM_V2 != LOOKUP_SYSTEM
 
+# 실험 29: 규칙 1~7은 lookup-v2 그대로(문자열 치환으로 보장), 규칙 8(숫자 먼저·반복 금지·해당 없는 예외 금지)과 규칙 9(내부 용어 금지)만 추가
+LOOKUP_VERSION_V3 = "lookup-v3"
+LOOKUP_SYSTEM_V3 = LOOKUP_SYSTEM_V2.replace(
+    "\n\n출력 필드",
+    "\n8. 답변의 첫 문장은 질문이 묻는 숫자나 결론으로 시작한다. 같은 안내(학과 확인 필요, 면제 예외 등)는 답 전체에서 한 번만 말한다. 행은 규칙 7대로 모두 말하되, 질문한 사람의 학과·입학 구분·학번에 해당하지 않는다고 행에 적힌 예외나 다른 대상 한정 문구는 쓰지 않는다."
+    "\n9. 이수유형 값(예: 심화단수, 단수)은 답에 쓰지 않고 '전공 N학점 이상'처럼 항목 이름으로 말한다.\n\n출력 필드",
+    1)
+assert LOOKUP_SYSTEM_V3 != LOOKUP_SYSTEM_V2
+
 JUDGE_SYSTEM = """너는 대학 졸업요건 안내 챗봇의 답변을 채점하는 채점자다. [문항]의 기준으로 [챗봇 답변]을 판정하고, [인용한 근거]가 답변을 뒷받침하는지도 본다.
 
 판정 규칙
@@ -551,7 +560,7 @@ def main():
     a.add_argument("--lookup", action="store_true", help="숫자 질문은 criteria 조회로 답변 (실험 8)")
     a.add_argument("--prompt", choices=["v1", "v2"], default="v1", help="RAG 답변 프롬프트 (v2 = 실험 9, 조회 경로 lookup-v1에는 영향 없음)")
     a.add_argument("--calc", action="store_true", help="계산·비교 질문은 코드가 계산 (실험 11, 조회·RAG보다 먼저 시도)")
-    a.add_argument("--lookup-prompt", choices=["v1", "v2"], default="v1", help="조회 경로 답변 프롬프트 (v2 = 실험 10, 기본 v1)")
+    a.add_argument("--lookup-prompt", choices=["v1", "v2", "v3"], default="v1", help="조회 경로 답변 프롬프트 (v2 = 실험 10, 기본 v1)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")

@@ -1,6 +1,6 @@
 """7단계 서비스 엔진: 질문 하나를 6단계 채택 파이프라인(pipeline.py)으로 답하고 화면용 dict로 돌려준다.
 
-설정은 6단계 최종(E11): E2 대학·학번 필터 + E3 질문 동의어 확장 + 조회(lookup-v2) + 계산(calc-v1) + RAG(answer-v2), k=5.
+설정은 6단계 최종(E11): E2 대학·학번 필터 + E3 질문 동의어 확장 + 조회(lookup-v3, E29) + 계산(calc-v1) + RAG(answer-v2), k=5.
 파이프라인 로직은 평가(run_rag.py answer)와 같은 pipeline.Pipeline.answer_one을 쓴다. 이 파일이 하는 일은 세 가지다.
 1. 사이드바 값(대학·학번·학과)을 질문 앞에 붙이되, 질문에 이미 있는 것은 질문을 우선한다(build_question).
 2. 결과 행에서 화면용 출처 카드·배지·본문을 만든다(출처 줄 분리, 같은 행·같은 조항은 한 번만).
@@ -21,7 +21,7 @@ import query_filter as QF
 import run_rag as R
 
 OUT_OF_RANGE = "범위 밖"  # 학번 선택지: 2022~2026학번 밖
-SERVICE_SETTINGS = dict(filter=True, expand=True, lookup=True, calc=True, prompt="v2", lookup_prompt="v2")
+SERVICE_SETTINGS = dict(filter=True, expand=True, lookup=True, calc=True, prompt="v2", lookup_prompt="v3")
 SOURCE_LINE = re.compile(r"\n[ \t]*(?:[-•*][ \t]*)?(?:인용[ \t]*)?출처[ \t]*[:：—-]")
 FLAG_NOTE = ("학과 확인 필요", "사유 미확인")
 

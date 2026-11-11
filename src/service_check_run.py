@@ -43,6 +43,8 @@ CASES = [
     ("한남", 2022, "무역물류학과", "신입", "졸업까지 영역별로 얼마나 들어야 해?"),  # 19 (E26 학과 확장, 이름 변경 학과)
     ("한남", 2023, "정보통신공학과", "신입", "공학인증 해야 돼?"),  # 20 (E26 공학인증 안내)
     ("한밭", 2024, "산업디자인학과", "신입", "전공 기준 알려줘"),  # 21 (E25 학과 확장)
+    ("한밭", 2024, "기계공학과", "편입", "편입생은 전공 몇 학점 들어야 해?"),  # 22 (E29: 학과 무관 행 HB-078의 성인전담 문구)
+    ("한남", 2022, "간호학과", "신입", "졸업학점이랑 전공 몇 학점이야?"),  # 23 (E29: 이수유형 값 "심화단수"가 답에 나옴)
 ]
 
 
@@ -50,7 +52,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", type=int, nargs="*", help="실행할 문항 번호(기본 전부)")
     ap.add_argument("--tag", default="", help="결과 파일 이름 꼬리표")
+    ap.add_argument("--lookup-prompt", choices=["v2", "v3"], default="", help="조회 답변 프롬프트(기본: 서비스 설정, E29 비교용)")
     a = ap.parse_args()
+    if a.lookup_prompt:
+        engine.SERVICE_SETTINGS["lookup_prompt"] = a.lookup_prompt
     eng = engine.Engine()
     rows, total = [], 0.0
     for i, (univ, year, dept, entry, q) in enumerate(CASES, 1):

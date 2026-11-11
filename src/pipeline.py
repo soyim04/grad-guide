@@ -39,7 +39,7 @@ class Pipeline:
     def __init__(self, client, col, chat, settings):
         self.client, self.col, self.chat, self.s = client, col, chat, settings
         self.system, self.version = (R.ANSWER_SYSTEM_V2, R.PROMPT_VERSION_V2) if settings.prompt == "v2" else (R.ANSWER_SYSTEM, R.PROMPT_VERSION)
-        self.lsys, self.lver = (R.LOOKUP_SYSTEM_V2, R.LOOKUP_VERSION_V2) if settings.lookup_prompt == "v2" else (R.LOOKUP_SYSTEM, R.LOOKUP_VERSION)
+        self.lsys, self.lver = {"v2": (R.LOOKUP_SYSTEM_V2, R.LOOKUP_VERSION_V2), "v3": (R.LOOKUP_SYSTEM_V3, R.LOOKUP_VERSION_V3)}.get(settings.lookup_prompt, (R.LOOKUP_SYSTEM, R.LOOKUP_VERSION))
 
     def search_query(self, question):
         """실험 3: 검색용 임베딩만 확장하고 답변 모델은 원래 질문을 본다"""
