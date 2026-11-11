@@ -44,13 +44,16 @@ def is_korean(text):
     return not (letters >= 30 and hg / letters < 0.3)
 
 
+YEAR_RE = re.compile(r"(?<![\d.,])(?:19|20)\d{2}(?:\s*(?:학번|학년도|학년|년도|년))?(?![\d])")  # 학번·연도(2023학번·2026학년도·4자리 연도)는 핵심 숫자로 세지 않는다(E33d)
+
+
 def unanswerable_kind(body):
-    """답에 확인 불가 표현이 있을 때 배지 종류(E31 [1], E33c 보강). 인용 [번호]가 있고 + 첫 문장에 확인 불가가 없고 + 첫 문장에 숫자(학점·회·년 등, 인용 번호 제외)가 있으면 '일부확인불가'(핵심 답은 근거가 있고 곁가지만 확인 불가),
+    """답에 확인 불가 표현이 있을 때 배지 종류(E31 [1], E33c 보강). 인용 [번호]가 있고 + 첫 문장에 확인 불가가 없고 + 첫 문장에 핵심 숫자(학점·회·기간 등, 인용 번호·학번·연도 제외)가 있으면 '일부확인불가'(핵심 답은 근거가 있고 곁가지만 확인 불가),
     첫 문장이 확인 불가이거나 인용이 없으면 '확인불가'(지금처럼 강하게). 표현이 없으면 None."""
     if not R.UNANSWERABLE_RE.search(body):
         return None
     first = re.split(r"(?<=[.!?。])(?:\[\d+\])*\s+|\n", body.strip())[0]  # 문장 끝 뒤에 인용 [n]이 붙어 있어도 문장을 나눈다(E33b)
-    if re.search(r"\[\d+\]", body) and not R.UNANSWERABLE_RE.search(first) and re.search(r"\d", re.sub(r"\[\d+\]", "", first)):  # E33c: 첫 문장에 숫자(인용 번호 제외)가 있을 때만 약하게
+    if re.search(r"\[\d+\]", body) and not R.UNANSWERABLE_RE.search(first) and re.search(r"\d", YEAR_RE.sub("", re.sub(r"\[\d+\]", "", first))):  # E33c·E33d: 첫 문장에 핵심 숫자(인용 번호·학번·연도 제외)가 있을 때만 약하게
         return "일부확인불가"
     return "확인불가"
 
