@@ -686,6 +686,19 @@ def compare_conclusion_html(r):
     return U.callout("warn", "한쪽의 주전공 요구 학점이 학과별로 달라 기준표에 없어서, 합을 비교하지 않았어요(학과 확인 필요).")
 
 
+def compare_source_line(rows):
+    """비교표 근거 한 줄: '근거: 조항 (쪽 …) / 조항 (쪽 …)'. 같은 조항은 한 번만, 잠정 행이 섞이면 '잠정 (학과 확인)'. 행 ID는 쓰지 않는다."""
+    seen, parts = set(), []
+    for x in rows:
+        art, pg = short_article(x["출처조항"], limit=60), str(x["출처쪽"] or "").strip()
+        if (art, pg) in seen:
+            continue
+        seen.add((art, pg))
+        parts.append(art + (f" (쪽 {pg})" if pg else ""))
+    line = "근거: " + " / ".join(parts)
+    return line + (" · 잠정 (학과 확인)" if any(x["상태"] == "잠정" for x in rows) else "")
+
+
 def page_compare(sc):
     page_title("학사 선택 비교", "부전공 ↔ 복수·다전공. 전공학점 합 = 주전공 요구 학점 + 추가로 이수할 학점")
     if not need_year(sc) or not need_dept(sc, "비교 결과"):
@@ -703,12 +716,13 @@ def page_compare(sc):
             md(U.callout("info", U.esc(r["floor_note"])))
         for n in r["notes"]:
             md(U.callout("info", U.esc(n)))
+        md(f'<div class="ck-src">{U.esc(compare_source_line(r["rows"]))}</div>')  # E24d 후속: 일반 모드에서도 근거 조항·쪽(행 ID 없이)
         if is_dev():  # 행 ID는 개발자 모드에서만(E24d)
             md(f'<div class="ck-src">근거 행: {U.esc(", ".join(x["행ID"] for x in r["rows"]))}</div>')
         for why in r["reasons"]:
             st.caption(S.strip_ids(why))
     q = S.explain_question(univ, year, dept)
-    if q and st.button("AI 설명 듣기", key=f"explain|{univ}|{year}|{dept}", type="primary"):
+    if q and st.button("AI 설명 보기", key=f"explain|{univ}|{year}|{dept}", type="primary"):
         with st.spinner("설명을 만드는 중이에요…"):
             out, log_id = ask(q, {**sc, "univ": None, "year": None, "dept": None})
         st.session_state["explain"] = (out, log_id) if out else None

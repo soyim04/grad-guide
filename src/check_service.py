@@ -1156,7 +1156,7 @@ def cmd_app():
             h2 = html(at2)
             can_ai = S.explain_question(u, y, S.BASE_DEPT[u] if not d else d) is not None  # 설명 질문이 안 만들어지는 조건(배재 등)에는 AI 설명 버튼이 없다
             ok2 = r["ok"] and all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and (not r["less"] or (r["less"] in h2 and f"{r['diff']:g}학점" in h2)) \
-                and "근거 행" not in h2 and ("AI 설명 듣기" in [b.label for b in at2.button]) == can_ai
+                and "근거 행" not in h2 and "근거:" in h2 and (("잠정 (학과 확인)" in h2) == any(x["상태"] == "잠정" for x in r["rows"])) and not re.search(r"(BJ|HN|HB|CN|MW)-\d{3}", h2) and "AI 설명 듣기" not in [b.label for b in at2.button] and ("AI 설명 보기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok2, h2[:60])
         # ---- E19b 홈 3단계 버튼 · 세부 항목 표시 이름 ----
         at = pick(run(), "배재", 2023, "신입")
