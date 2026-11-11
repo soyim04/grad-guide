@@ -203,8 +203,23 @@ def short_title(name):
     return re.sub(r"^(?:국립)?[가-힣]+대학교\s+", "", str(name))
 
 
+def meta_line(*pairs):
+    """('쪽', '8(16)'), ('등급', 'A') … → '쪽 8(16) · 등급 A'. 값이 빈 칸인 라벨은 뺀다(예: '쪽 ·' 만 남지 않게)."""
+    return " · ".join(f"{label} {U.esc(v)}".strip() if label else U.esc(v) for label, v in pairs if str(v or "").strip())
+
+
+def meta_plain(*pairs):
+    """meta_line의 마크다운용(이스케이프 없음)"""
+    return " · ".join(f"{label} {v}".strip() if label else str(v) for label, v in pairs if str(v or "").strip())
+
+
 def details_html(lines, label="근거 보기"):
-    lines = [x for x in lines if x]
+    seen, uniq = set(), []
+    for x in lines:  # 같은 문장은 근거 보기 안에서도 한 번만
+        if x and x not in seen:
+            seen.add(x)
+            uniq.append(x)
+    lines = uniq
     if not lines:
         return ""
     return f'<details class="det"><summary>{U.esc(label)}</summary>' + "".join(f"<div>{x}</div>" for x in lines) + "</details>"
@@ -214,15 +229,14 @@ def checklist_html(items, limit=None):
     out = []
     for it in (items if limit is None else items[:limit]):
         cls, label = KIND_BADGE.get(it["kind"], ("na", it["kind"]))
-        short, det = "", []
+        det = []  # E30: 카드 위에는 제목 + 결과 한 줄만, 근거 문장(조항·비고)은 근거 보기 안에만
         if it.get("src"):
             s = it["src"]
-            short = f'<div class="ck-src">{U.esc(short_article(s["source"]))}</div>'
-            det = [f'{dev_id(s["id"])}{U.esc(s["source"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])} · 상태 {U.esc(s["status"])}']
+            det = [f'{dev_id(s["id"])}{U.esc(s["source"])}', meta_line(("쪽", s["pages"]), ("등급", s["grade"]), ("상태", s["status"]))]
         if it.get("extra"):
             det.append(U.esc(it["extra"]))
         out.append(f'<div class="ck ck-{cls}"><span class="badge b-{cls}">{U.esc(label)}</span>'
-                   f'<div><b>{U.esc(it["title"])}</b><div class="ck-text">{U.esc(it["text"])}</div>{short}{details_html(det)}</div></div>')
+                   f'<div><b>{U.esc(it["title"])}</b><div class="ck-text">{U.esc(it["text"])}</div>{details_html(det)}</div></div>')
     return "".join(out)
 
 
@@ -261,13 +275,13 @@ def sources_html(srcs):
         if s["kind"] == "기준표":
             top = f'{nums}<span>{U.esc(s["title"])}</span><span>{U.esc(short_article(s["article"]))}</span>'
             meta = f'값 <b>{U.esc(s["value"])}</b>'
-            det = [f'대상 {U.esc(s["target"])} · 상태 {U.esc(s["status"])}', f'{dev_id(s["id"])}{U.esc(s["article"])}', f'쪽 {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}']
+            det = [meta_line(("대상", s["target"]), ("상태", s["status"])), f'{dev_id(s["id"])}{U.esc(s["article"])}', meta_line(("쪽", s["pages"]), ("등급", s["grade"]))]
         else:
             ed = s.get("edition") or ""
             ed_chip = U.badge("cur" if ed.startswith("현행") else "old", ed.split("(")[0]) if ed else ""
             top = f'{nums}<span>{U.esc(short_title(s["title"]))}</span><span>{U.esc(short_article(s["article"]))}</span>{ed_chip}'
             meta = ""
-            det = [f'{U.esc(s["title"])} · {U.esc(s["article"])}', f'{U.esc(s["univ"])} · {U.esc(s["pages"])} · 등급 {U.esc(s["grade"])}' + (f' · 판본 {U.esc(ed)}' if ed else "")]
+            det = [f'{U.esc(s["title"])} · {U.esc(s["article"])}', meta_line(("", s["univ"]), ("", s["pages"]), ("등급", s["grade"]), ("판본", ed))]
         cards.append(f'<div class="src"><div class="src-top">{top}</div>' + (f'<div class="src-meta">{meta}</div>' if meta else "") + details_html(det) + "</div>")
     return "".join(cards)
 
@@ -583,9 +597,9 @@ def page_remaining(sc):
         md('<div class="card-h">졸업하려면 이것들을 채워야 해요</div>')
         md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')  # 대학·학번·학과는 페이지 제목에 있어 반복하지 않는다
         with st.expander("근거 보기"):
-            st.markdown(f"{dev_id(grad['행ID'], md=True)}이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n쪽 {grad['출처쪽']} · 등급 {grad['출처등급']} · 상태 {grad['상태']}")
+            st.markdown(f"{dev_id(grad['행ID'], md=True)}이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n{meta_plain(('쪽', grad['출처쪽']), ('등급', grad['출처등급']), ('상태', grad['상태']))}")
             if cap_row:
-                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n{dev_id(cap_row['행ID'], md=True)}{cap_row['출처조항']} · 쪽 {cap_row['출처쪽']} · 등급 {cap_row['출처등급']}")
+                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n{dev_id(cap_row['행ID'], md=True)}{cap_row['출처조항']} · {meta_plain(('쪽', cap_row['출처쪽']), ('등급', cap_row['출처등급']))}")
         generic_note(sc)
         if plan["tier"] == "T3":
             md('<div class="ck-src">영역별 남은 학점은 계산하지 않고, 규정 표의 영역별 기준만 보여 드려요.</div>')

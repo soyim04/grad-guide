@@ -1370,6 +1370,34 @@ def cmd_app():
         st.cache_resource.clear()
 
 
+def cmd_cards():
+    """E30: 체크리스트 카드는 위에 제목 + 결과 한 줄만, 근거 문장은 근거 보기 안에만, 메타 줄에 값 없는 라벨이 없다(일반 모드, API 비용 0)."""
+    import re
+    import ui_pages as P
+    n, dup, empty, top_src, same = 0, [], [], [], []
+    for univ, dept in S.BASE_DEPT.items():
+        for year in range(2022, 2027):
+            for entry in ("신입", "편입"):
+                for it in S.checklist(univ, year, dept, entry, False):
+                    html_ = P.checklist_html([it])
+                    n += 1
+                    if "ck-src" in html_:
+                        top_src.append((univ, year, it["title"]))
+                    head, _, det = html_.partition("<details")
+                    divs = re.findall(r"<div>(.*?)</div>", det)
+                    if len(divs) != len(set(divs)):
+                        dup.append((univ, year, it["title"]))
+                    text = P.U.esc(it["text"])
+                    if text and any(text == d or (len(text) > 12 and text in d) for d in divs):
+                        same.append((univ, year, it["title"]))
+                    if re.search(r"(?:쪽|등급|상태|대상|판본)(?:\s*·|\s*$)", " ".join(divs)) or re.search(r"(?:^|·)\s*·", " ".join(divs)):
+                        empty.append((univ, year, it["title"]))
+    check(f"카드: 체크리스트 {n}개 카드 위에는 근거 문장(출처 줄)이 없다", n > 100 and not top_src, str(top_src[:3]))
+    check("카드: 같은 문장이 위(결과 한 줄)와 근거 보기 안에 두 번 나오지 않고, 근거 보기 안에서도 중복 없음", not same and not dup, str((same[:3], dup[:3])))
+    check("카드: 근거 보기 메타 줄에 값 없는 라벨(쪽·등급·상태)이 없다", not empty, str(empty[:3]))
+    check("카드: meta_line은 빈 값 라벨을 뺀다", P.meta_line(("쪽", ""), ("등급", "A"), ("상태", "확인불가")) == "등급 A · 상태 확인불가" and P.meta_line(("쪽", "8"), ("등급", None)) == "쪽 8" and P.meta_line(("쪽", " ")) == "")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("what", nargs="?", default="all", choices=["all", "equiv", "logic", "citations", "app", "_snapshot"])  # _snapshot: 재시도용 내부 명령(JSON 한 줄 출력)
@@ -1387,6 +1415,8 @@ def main():
         cmd_citations()
     if a.what in ("all", "app") and not a.write_baseline:
         cmd_app()
+    if a.what in ("all", "app") and not a.write_baseline:
+        cmd_cards()
     bad = [n for n, ok, _ in RESULTS if not ok]
     if RESULTS:
         print(f"\n{len(RESULTS) - len(bad)}/{len(RESULTS)} 통과" + (f", 실패 {bad}" if bad else "") + f" · SKIP {len(SKIPS)}개" + (f" {SKIPS}" if SKIPS else ""))
