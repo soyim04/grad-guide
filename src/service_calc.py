@@ -421,6 +421,20 @@ def _one(univ, dept, year, item):
     return r, ""
 
 
+# 목원 비교 안내(E-C, 2026-11-11): 2022~2024학번 세칙 해설은 복수전공 36이지만 현행 규정(부칙 제3조)으로는 33이 적용될 수 있다.
+# 51·50은 학생 소속이 아니라 "추가로 이수하는 전공"이 사회복지(상담)·사범대학이거나 교직이수일 때의 값이다.
+MOKWON_EXPLAIN_NOTE = ("이 학번 세칙 해설에는 복수전공 36학점으로 적혀 있어요. 현행 규정(부칙)으로는 33학점이 적용될 수 있으니 학과에서 확인하세요.")
+MOKWON_SPECIAL_NOTE = ("사회복지(상담)학과 전공을 추가하거나 사범대학 전공·교직이수를 하면 전공 학점이 51학점·50학점으로 달라져요.")
+
+
+def MOKWON_COMPARE_NOTES(univ, year, rows):
+    if univ != "목원":
+        return []
+    out = [MOKWON_EXPLAIN_NOTE] if 2022 <= int(year) <= 2024 else []
+    return out + [MOKWON_SPECIAL_NOTE]
+
+
+
 def compare(univ, year, dept):
     """부전공 ↔ 복수·다전공 전공학점 비교(전공학점 합 = 주전공 요구 학점 + 이수 학점). 행은 스키마 규칙 8로 항목마다 고른다.
     주전공 학점 행이 없으면 그 쪽 합은 계산하지 않고 '확인 불가'로 둔다(학과 확인 필요). 반환 dict(ok, table[], diff, less, ...)"""
@@ -446,8 +460,10 @@ def compare(univ, year, dept):
     # 범위로 정해진 값(값_최대 있음)은 가장 작은 값으로 더했다. 합이 최저값 기준임을 화면에 알린다(E20 데이터 보완, 한밭 융합경영학과 HB-011·HB-023)
     floor_note = ("범위로 정해진 값은 가장 작은 값(최저값) 기준으로 더했어요. 학과 확인 필요."
                   if any(r["값_최대"] for r in rows) else "")
+    notes = [n for n in (display_note(r["비고"]) for r in rows if "선택 불가" in r["비고"]) if n]
+    notes += MOKWON_COMPARE_NOTES(univ, year, rows)
     return {"ok": True, "full": full, "floor_note": floor_note, "table": table, "diff": diff, "less": less, "reasons": reasons, "rows": rows,
-            "notes": [n for n in (display_note(r["비고"]) for r in rows if "선택 불가" in r["비고"]) if n],
+            "notes": notes,
             "question": compare_question(univ, year, dept), "department_hint": dept}
 
 

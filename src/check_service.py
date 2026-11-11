@@ -649,6 +649,19 @@ def cmd_logic():
         return r, [t["total"] for t in r["table"]] if r["ok"] else None
     r, v = totals("목원", 2022, "경영학부")
     check("비교 M08(목원 2022): 부전공 72·복수전공 66, 복수가 6학점 적음", v == [72, 66] and r["less"] == "복수전공" and r["diff"] == 6, str(v))
+    def _mw(y, d):
+        r_ = S.compare("목원", y, d)
+        return [(t_["name"], t_["major"]["값"], t_["extra"]["값"]) for t_ in r_["table"]], r_["notes"]
+    v23, n23 = _mw(2023, "경찰법학과")
+    v24, n24 = _mw(2024, "응급구조학과")
+    v25, n25 = _mw(2025, "AI응용학과")
+    v26e, n26e = _mw(2026, "응급구조학과")
+    want = [("부전공", "54", "18"), ("복수전공", "33", "33")]
+    check("목원 비교(E-C): 2022~2024는 33+33/54+18에 세칙 해설 36 안내(현행 규정 부칙 33 적용 가능)와 51·50 안내가 붙고, 2025~는 해설 안내 없이 51·50 안내만",
+          v23 == want and v24 == want and v25 == want and S.MOKWON_EXPLAIN_NOTE in n23 and S.MOKWON_EXPLAIN_NOTE in n24 and S.MOKWON_SPECIAL_NOTE in n23
+          and S.MOKWON_EXPLAIN_NOTE not in n25 and S.MOKWON_SPECIAL_NOTE in n25 and "51" in S.MOKWON_SPECIAL_NOTE and "50" in S.MOKWON_SPECIAL_NOTE
+          and not any("해설" in x for x in S.compare("한남", 2023, "경영정보학과")["notes"]), str((v23, v25)))
+    check("목원 비교(E-C): 응급구조학과 2026 주전공 33·54는 잠정 행(MW-363·364)", v26e == want and [L.BY_ID[i]["상태"] for i in ("MW-363", "MW-364")] == ["잠정", "잠정"], str(v26e))
     r, v = totals("한남", 2023, "경영정보학과")
     check("비교 H10(한남 2023): 부전공 66·다전공 72, 부전공이 6학점 적음", v == [66, 72] and r["less"] == "부전공" and r["diff"] == 6, str(v))
     r, v = totals("배재", 2024, "IT경영정보학과")
