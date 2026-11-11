@@ -6,6 +6,8 @@ import math
 import re
 
 TOP_N = 4
+SERVICE_YEARS = (2022, 2026)  # E31b: 이 학번 범위와 전혀 겹치지 않는 청크는 덧붙이지 않는다(범위 밖 학번 질문에서 구판 표를 단정하는 것 방지)
+SCOPE_FILTER = True  # 서비스 사례 비교(E31 방식)를 위해서만 끈다
 K1, B = 1.2, 0.75
 STOP = set("몇 어떻게 받으면 있어 해요 해야 돼 들을 수 까지 어떤 이상 학생 학번 최대".split())
 _PREFIX = re.compile(r"^.*?학생:\s*")  # 사이드바가 붙인 "한남대 2023학번 경영정보학과 학생: " 접두는 낱말에서 뗀다
@@ -19,6 +21,14 @@ def toks(text):
             continue
         out += [w] if len(w) == 1 else [w[i:i + 2] for i in range(len(w) - 1)]
     return out
+
+
+def _out_of_scope(meta):
+    """학번 범위가 서비스 범위(2022~2026)와 전혀 겹치지 않으면 True. 제한 없음(0~9999)이거나 걸치면 False"""
+    s, e = meta.get("학번_시작"), meta.get("학번_끝")
+    if s is None or e is None:
+        return False
+    return e < SERVICE_YEARS[0] or s > SERVICE_YEARS[1]
 
 
 def extra_chunks(col, question, where, dense_ids):
@@ -44,5 +54,7 @@ def extra_chunks(col, question, where, dense_ids):
                 s += math.log(1 + (n - df[t] + .5) / (df[t] + .5)) * c[t] * (K1 + 1) / (c[t] + K1 * (1 - B + B * len(d) / avg))
         scored.append((s, k))
     scored.sort(key=lambda x: (-x[0], x[1]))
+    if SCOPE_FILTER:
+        scored = [(s, k) for s, k in scored if not _out_of_scope(metas[k])]
     top = [k for s, k in scored[:TOP_N] if s > 0]
     return [(ids[k], docs[k], metas[k]) for k in top if ids[k] not in set(dense_ids)]

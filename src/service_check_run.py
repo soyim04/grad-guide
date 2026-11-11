@@ -56,6 +56,7 @@ CASES = [
     ("배재", 2025, None, "신입", "조기졸업 하려면 평점 몇 이상이야?"),  # 32 (E31 [3], 제68조 4.25·F 없음, 벡터 22위)
     ("목원", 2025, None, "신입", "조기졸업 하려면 평점 몇 이상이야?"),  # 33 (E31 [3], 4.25 + 편입학자 불허)
     ("목원", 2025, None, "신입", "군대에서 딴 학점도 인정돼?"),  # 34 (E31 [2], 시행세칙 제43조의4, 벡터 5위)
+    ("목원", 2025, None, "신입", "2020학번 졸업학점 알려줘"),  # 35 (E31b: 범위 밖 학번, 정답은 확인 불가. 2020 구판 청크를 덧붙이면 132학점을 단정함)
 ]
 
 
@@ -64,12 +65,16 @@ def main():
     ap.add_argument("--only", type=int, nargs="*", help="실행할 문항 번호(기본 전부)")
     ap.add_argument("--tag", default="", help="결과 파일 이름 꼬리표")
     ap.add_argument("--lexical", action="store_true", help="BM25 덧붙임 켬(E31 [2], 전후 비교용)")
+    ap.add_argument("--lexical-no-scope", action="store_true", help="E31b 규칙(범위 밖 학번 청크 제외)을 끄고 E31 방식으로(--lexical과 같이)")
     ap.add_argument("--lookup-prompt", choices=["v2", "v3"], default="", help="조회 답변 프롬프트(기본: 서비스 설정, E29 비교용)")
     a = ap.parse_args()
     if a.lookup_prompt:
         engine.SERVICE_SETTINGS["lookup_prompt"] = a.lookup_prompt
     if a.lexical:
         engine.SERVICE_SETTINGS["lexical"] = True
+    if a.lexical_no_scope:
+        import lexical
+        lexical.SCOPE_FILTER = False  # E31 방식(범위 밖 학번 청크 제외 없이)과 비교하기 위한 옵션
     eng = engine.Engine()
     rows, total = [], 0.0
     for i, (univ, year, dept, entry, q) in enumerate(CASES, 1):

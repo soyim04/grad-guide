@@ -21,7 +21,7 @@ import query_filter as QF
 import run_rag as R
 
 OUT_OF_RANGE = "범위 밖"  # 학번 선택지: 2022~2026학번 밖
-SERVICE_SETTINGS = dict(filter=True, expand=True, lookup=True, calc=True, prompt="v2", lookup_prompt="v3")
+SERVICE_SETTINGS = dict(filter=True, expand=True, lookup=True, calc=True, prompt="v2", lookup_prompt="v3", lexical=True)  # E31b: 벡터 top-5 + BM25 덧붙임(서비스 범위 밖 학번 청크 제외)
 SOURCE_LINE = re.compile(r"\n[ \t]*(?:[-•*][ \t]*)?(?:인용[ \t]*)?출처[ \t]*[:：—-]")
 FLAG_NOTE = ("학과 확인 필요", "사유 미확인")
 

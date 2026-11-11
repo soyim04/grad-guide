@@ -82,7 +82,7 @@ def snapshot():
     R.log_usage = lambda *a, **k: None
     log_lines = []
     builtins.print = lambda *a, **k: log_lines.append(" ".join(str(x) for x in a))
-    args = argparse.Namespace(chunks="", collection="", filter=True, expand=True, lookup=True, lookup_prompt="v3", calc=True, prompt="v2",
+    args = argparse.Namespace(chunks="", collection="", filter=True, expand=True, lookup=True, lookup_prompt="v3", lexical=True, calc=True, prompt="v2",
                               ids="", limit=0, tag="snapcheck")
     try:
         R.cmd_answer(args)
@@ -116,6 +116,11 @@ def _tail_noise(o, c):
         return False  # RAG가 아니거나 경로가 바뀐 문항은 흔들림이 아니라 진짜 변경이다
     a, b = o["검색청크"].split(";"), c["검색청크"].split(";")
     da, db = [float(x) for x in o["검색거리"].split(";")], [float(x) for x in c["검색거리"].split(";")]
+    # E31b: BM25 덧붙임(번호 6~)이 켜져 있으면 검색청크 = 벡터 청크(거리 열과 같은 개수) + 덧붙임. 덧붙임이 같아야 하고 흔들림은 벡터 부분에서만 본다
+    n = len(da)
+    if len(db) != n or len(a) != len(b) or a[n:] != b[n:]:
+        return False
+    a, b = a[:n], b[:n]
     if len(a) != len(b) or len(a) < 4 or set(a) == set(b):
         return False
     gone, came = set(a) - set(b), set(b) - set(a)
@@ -207,6 +212,11 @@ def cmd_logic():
           ifor("장학금 받으려면 평점 몇 이상이야?") is None and ifor("학사경고 평점 몇 점 이하야?") is None and ifor("조기졸업 평점 몇 이상이야?") is None)
     check("E31 [3]: 졸업 평점 질문은 그대로 조회(dev T08·C06 문장 포함)",
           ifor("졸업 평점 몇 이상이야?") == ["평점_최저"] and ifor("충남대는 졸업하려면 평점이 몇 점 이상이어야 해?") == ["평점_최저"] and ifor("한밭대도 졸업하려면 평점이 2.00 이상이어야 해?") == ["평점_최저"])
+    import lexical as LX
+    check("E31b: BM25 덧붙임은 서비스 범위(2022~2026)와 안 겹치는 학번 청크(2020 등)를 제외하고, 제한 없음(0~9999)·걸치는 범위는 유지",
+          LX._out_of_scope({"학번_시작": 2020, "학번_끝": 2020}) and LX._out_of_scope({"학번_시작": 2027, "학번_끝": 2027}) and not LX._out_of_scope({"학번_시작": 0, "학번_끝": 9999})
+          and not LX._out_of_scope({"학번_시작": 2019, "학번_끝": 2022}) and not LX._out_of_scope({"학번_시작": 2026, "학번_끝": 9999}) and LX.TOP_N == 4)
+    check("E31b: 서비스 기본 설정은 BM25 덧붙임이 켜져 있다(벡터 top-5 유지)", engine.SERVICE_SETTINGS.get("lexical") is True)
     def rows4(q):
         res, _ = L.lookup(q)
         return [r["행ID"] for rs in (res or {}).values() for r in rs]
