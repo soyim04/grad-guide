@@ -28,6 +28,22 @@ FLAG_NOTE = ("학과 확인 필요", "사유 미확인")
 
 # ---------- 질문 만들기 ----------
 
+_FOREIGN = re.compile("[぀-ヿ一-鿿]")  # 가나·한자(한국어 답에 섞이면 이상한 글자)
+_HANGUL = re.compile("[가-힣]")
+_LETTER = re.compile("[A-Za-z가-힣぀-ヿ一-鿿]")
+FALLBACK_ANSWER = "답을 만들지 못했어요(확인 불가). 같은 질문을 다시 해 보시거나, 학과 사무실·학사 공지를 확인해 주세요."
+
+
+def is_korean(text):
+    """E32: 답이 한국어인가. 가나·한자가 한글과 한자·가나 합의 20% 이상이면 아니고, 글자가 30자 이상인데 한글이 30% 미만이어도 아니다(영어 등).
+    'F 등급'·'IT경영정보'·'A0'·URL처럼 라틴 글자가 섞인 한국어 답은 통과한다."""
+    fh, hg = len(_FOREIGN.findall(text)), len(_HANGUL.findall(text))
+    if fh and fh / (fh + hg) >= 0.2:
+        return False
+    letters = len(_LETTER.findall(text))
+    return not (letters >= 30 and hg / letters < 0.3)
+
+
 def unanswerable_kind(body):
     """답에 확인 불가 표현이 있을 때 배지 종류(E31 [1]). 인용 [번호]가 있고 첫 문장에는 없으면 '일부확인불가'(핵심 답은 근거가 있고 곁가지만 확인 불가),
     첫 문장이 확인 불가이거나 인용이 없으면 '확인불가'(지금처럼 강하게). 표현이 없으면 None."""
@@ -129,13 +145,23 @@ class Engine:
         q, used = choose_question(question, univ, year, dept)
         res = self.pl.answer_one({"id": "svc", "질문": q}, self.pl.search_query(q))
         row = res.row
-        body, tail = split_answer(row["답변"])
-        sources, badges = self._sources_and_badges(row, body)
-        cost = row["입력토큰"] / 1e6 * R.PRICE_IN + row["출력토큰"] / 1e6 * R.PRICE_OUT + res.embed_tokens / 1e6 * R.EMBED_PRICE
+        tin, tout, emb, korean, tries = row["입력토큰"], row["출력토큰"], res.embed_tokens, is_korean(row["답변"]), 1
+        if not korean:  # E32: 한국어가 아닌 답(드물게 모델이 일본어 등으로 답함)은 1회만 다시 만들고, 그래도 아니면 답을 못 만들었다고 안내한다
+            res = self.pl.answer_one({"id": "svc", "질문": q}, self.pl.search_query(q))
+            row = res.row
+            tin, tout, emb, tries = tin + row["입력토큰"], tout + row["출력토큰"], emb + res.embed_tokens, 2
+            korean = is_korean(row["답변"])
+        if korean:
+            body, tail = split_answer(row["답변"])
+            sources, badges = self._sources_and_badges(row, body)
+        else:
+            body, tail, sources = FALLBACK_ANSWER, "", []
+            badges = [{"kind": "확인불가", "text": "답을 만들지 못했어요. 다시 질문해 보세요"}]
+        cost = tin / 1e6 * R.PRICE_IN + tout / 1e6 * R.PRICE_OUT + emb / 1e6 * R.EMBED_PRICE
         route = {"criteria-calc": "계산", "criteria-lookup": "조회"}.get(row["컬렉션"], "규정 검색")
         return {"answer": body, "tail": tail, "sources": sources, "badges": badges, "route": route, "cost_usd": cost,
                 "latency_ms": int((time.time() - t0) * 1000), "question_used": q, "used_dept": used, "calc_text": row.get("계산결과", ""),
-                "tokens_in": row["입력토큰"], "tokens_out": row["출력토큰"], "embed_tokens": res.embed_tokens,
+                "tokens_in": tin, "tokens_out": tout, "embed_tokens": emb, "answer_tries": tries,
                 "retrieved": row.get("검색청크", ""), "lexical_extra": row.get("어휘추가청크", "")}  # E31: 실제로 모델에 넘어간 근거 청크(인용 안 한 것 포함)
 
     # ---- 출처 카드·배지 ----

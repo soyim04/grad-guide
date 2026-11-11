@@ -212,6 +212,45 @@ def cmd_logic():
           ifor("장학금 받으려면 평점 몇 이상이야?") is None and ifor("학사경고 평점 몇 점 이하야?") is None and ifor("조기졸업 평점 몇 이상이야?") is None)
     check("E31 [3]: 졸업 평점 질문은 그대로 조회(dev T08·C06 문장 포함)",
           ifor("졸업 평점 몇 이상이야?") == ["평점_최저"] and ifor("충남대는 졸업하려면 평점이 몇 점 이상이어야 해?") == ["평점_최저"] and ifor("한밭대도 졸업하려면 평점이 2.00 이상이어야 해?") == ["평점_최저"])
+    # E32: 한국어가 아닌 답 방어
+    ja = "学習経験の単位認定では、他の学校・研究機関・産業体などでの学習・研究・実習、または産業体での勤務が認められた場合、卒業必要単位の4分の1以内を専攻単位として認定できます。"
+    ko = "군 복무 중 취득한 학점은 학기당 6학점, 총 12학점까지 인정돼요. F 등급·A0 같은 표기나 IT경영정보 같은 이름이 섞여도 한국어예요[1]."
+    check("E32: is_korean — 일본어·영어 답은 아니고, 라틴 글자(F·A0·IT)·한자 병기가 조금 섞인 한국어 답은 맞다",
+          not engine.is_korean(ja) and not engine.is_korean("The credits earned in the military are not mentioned in the provided evidence for this question.") and engine.is_korean(ko)
+          and engine.is_korean("학점 인정(學點認定) 규정에 따라 최대 12학점까지 인정해요[1]. 군 복무 중 취득한 학점은 학기당 6학점이에요."))
+    import csv as csv_mod
+    saved = [r["답변"] for f in sorted((ROOT / "eval" / "results").glob("*_dev_base-rag_*.csv")) if "_grade-" not in f.name
+             for r in csv_mod.DictReader(f.open(encoding="utf-8-sig", newline="")) if r.get("답변")]
+    nonko = [a[:30] for a in saved if not engine.is_korean(a)]
+    check(f"E32: 저장된 개발용 답변 {len(saved)}개 중 한국어가 아닌 답 0개(서비스 점검 사례 34번 일본어 답 1개는 개발용이 아님)", len(saved) > 300 and not nonko, str(nonko[:3]))
+
+    class _Row:
+        def __init__(self, ans):
+            self.row = {"답변": ans, "입력토큰": 100, "출력토큰": 10, "컬렉션": "criteria-lookup", "인용청크": "", "인용": "", "검색청크": ""}
+            self.embed_tokens = 5
+            self.notes = []
+
+    class _Pl:
+        def __init__(self, seq):
+            self.seq, self.n = seq, 0
+
+        def search_query(self, q):
+            return q
+
+        def answer_one(self, r, sq, vec=None):
+            a = self.seq[min(self.n, len(self.seq) - 1)]
+            self.n += 1
+            return _Row(a)
+    e32 = engine.Engine.__new__(engine.Engine)
+    e32.pl, e32.col = _Pl([ja, ko]), None
+    o1 = e32.answer("군대에서 딴 학점도 인정돼?", "목원", 2025, "경영학부")
+    e32.pl = _Pl([ja, ja])
+    o2 = e32.answer("군대에서 딴 학점도 인정돼?", "목원", 2025, "경영학부")
+    e32.pl = _Pl([ko])
+    o3 = e32.answer("군대에서 딴 학점도 인정돼?", "목원", 2025, "경영학부")
+    check("E32: 한국어가 아닌 답이면 1회 다시 만들고(두 번째가 한국어면 그 답), 그래도 아니면 '답을 만들지 못했어요(확인 불가)'로 안내하며, 한국어 답은 다시 만들지 않는다",
+          o1["answer"] == ko and o1["answer_tries"] == 2 and o2["answer"] == engine.FALLBACK_ANSWER and o2["answer_tries"] == 2 and o2["badges"][0]["kind"] == "확인불가"
+          and o3["answer"] == ko and o3["answer_tries"] == 1 and o3["tokens_in"] == 100 and o1["tokens_in"] == 200, str((o1["answer_tries"], o2["answer"][:12], o3["answer_tries"])))
     import lexical as LX
     check("E31b: BM25 덧붙임은 서비스 범위(2022~2026)와 안 겹치는 학번 청크(2020 등)를 제외하고, 제한 없음(0~9999)·걸치는 범위는 유지",
           LX._out_of_scope({"학번_시작": 2020, "학번_끝": 2020}) and LX._out_of_scope({"학번_시작": 2027, "학번_끝": 2027}) and not LX._out_of_scope({"학번_시작": 0, "학번_끝": 9999})
@@ -223,6 +262,8 @@ def cmd_logic():
     r_it, r_pol, r_hb = rows4("배재대 2023학번 IT경영정보학과 학생: 한 학기에 몇 학점까지 신청할 수 있어?"), rows4("배재대 2023학번 경찰법학부 학생: 한 학기에 몇 학점까지 신청할 수 있어?"), rows4("한밭대 2026학번 졸업학점이 130학점인 학과는 한 학기에 최대 몇 학점까지 수강신청할 수 있어?")
     check("E31 [4]: 배재 수강상한(조건이 졸업학점에 걸린 행)은 그 학과·학번의 졸업학점 행을 같이 넘긴다(IT경영정보 2023=BJ-003 130, 경찰법학부 2023=대학 전체 BJ-001)",
           r_it == ["BJ-046", "BJ-047", "BJ-048", "BJ-003"] and r_pol == ["BJ-046", "BJ-047", "BJ-048", "BJ-001"], str((r_it, r_pol)))
+    check("E32b: 배재 수강상한에 붙는 졸업학점 행(BJ-001·BJ-003)의 비고에는 배지 문구('학과 확인 필요'·'사유 미확인')가 없다 — 경찰법학부 2023 질문에 '출처마다 값이 달라요' 배지가 뜨지 않는다(서비스 점검 30번)",
+          not any(k in L.BY_ID[i]["비고"] for i in r_pol + r_it for k in engine.FLAG_NOTE) and "AI·SW창의융합대학" in L.BY_ID["BJ-001"]["비고"], str([i for i in r_pol + r_it if any(k in L.BY_ID[i]["비고"] for k in engine.FLAG_NOTE)]))
     check("E31 [4]: 조건이 졸업학점에 걸리지 않은 수강상한 행(한밭 HB-018)은 졸업학점 행을 덧붙이지 않는다(dev T09·C08 경로 불변)", r_hb == ["HB-018"], str(r_hb))
     check("E31 [3] 보강: 평점이 있어도 신청 학점을 묻는 질문은 수강상한 조회", ifor("평점 4.3이면 몇 학점까지 신청돼?") == ["수강상한_학기"])
     # 1. 사이드바 값은 질문에 없을 때만 붙인다 (질문 우선)
