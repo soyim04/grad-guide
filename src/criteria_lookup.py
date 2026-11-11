@@ -73,7 +73,13 @@ def items_for(q):
     if re.search(r"한 학기.*(최대|몇 학점)", q2) or (re.search(r"수강.*(할 수|신청)", q2) and re.search(r"학점|최대|상한|한도|제한", q2)):
         return ["수강상한_학기"]
     if "평점" in q and re.search(r"몇 점|이상|\d\.\d", q):
-        return ["평점_최저"]
+        # E31 [3]: 평점 질문이 모두 졸업 평점은 아니다. 신청 학점을 묻는 평점 질문은 수강상한, 다른 주제어(장학·학사경고·조기졸업 등)가 있으면
+        # (졸업 평점이라고 분명히 말한 질문은 조기졸업만 빼고 그대로) 졸업 평점이 아니므로 다음 규칙·RAG로 넘긴다.
+        if re.search(r"신청.*학점|학점.*신청|몇 학점까지|수강\s?신청", q2):
+            return ["수강상한_학기"]
+        other = re.search(r"장학|학사경고|성적경고|조기졸업|교직|제적|재수강|재이수", q)
+        if not other or ("졸업" in q and not re.search(r"조기\s?졸업", q) and not re.search(r"장학", q)):
+            return ["평점_최저"]
     if re.search(r"복수전공|다전공|제2전공", q) and re.search(r"몇 학점|이수학점", q):
         return BUNDLE["복수전공"]
     if "부전공" in q and re.search(r"몇 학점|이수학점", q):

@@ -28,6 +28,17 @@ FLAG_NOTE = ("학과 확인 필요", "사유 미확인")
 
 # ---------- 질문 만들기 ----------
 
+def unanswerable_kind(body):
+    """답에 확인 불가 표현이 있을 때 배지 종류(E31 [1]). 인용 [번호]가 있고 첫 문장에는 없으면 '일부확인불가'(핵심 답은 근거가 있고 곁가지만 확인 불가),
+    첫 문장이 확인 불가이거나 인용이 없으면 '확인불가'(지금처럼 강하게). 표현이 없으면 None."""
+    if not R.UNANSWERABLE_RE.search(body):
+        return None
+    first = re.split(r"(?<=[.!?。])\s|\n", body.strip())[0]
+    if re.search(r"\[\d+\]", body) and not R.UNANSWERABLE_RE.search(first):
+        return "일부확인불가"
+    return "확인불가"
+
+
 def _mentions_dept(question):
     return any(m not in L.SCHOOL_WORDS and m != "일반학과" for m in L.MENTION_RE.findall(question))
 
@@ -168,8 +179,11 @@ class Engine:
             for g in groups.values():
                 g["pages"] = ", ".join(g["pages"])
                 sources.append(g)
-        if R.UNANSWERABLE_RE.search(body):
+        kind = unanswerable_kind(body)
+        if kind == "확인불가":
             badges.insert(0, {"kind": "확인불가", "text": "규정에서 확인되지 않은 내용이 있어요. 학과 사무실이나 학사 공지를 확인하세요"})
+        elif kind == "일부확인불가":  # E31 [1]: 핵심 답이 근거와 함께 있고 확인 불가는 곁가지 문장일 때 약한 배지
+            badges.insert(0, {"kind": "일부확인불가", "text": "핵심 내용은 근거가 있어요. 일부는 규정에서 확인되지 않았어요"})
         uniq, out = {}, []
         for b in badges:  # 같은 문구는 한 번만(배지에는 행 ID를 쓰지 않는다. 행 ID는 'rids'에만 모아 두고 개발자 모드에서만 화면에 붙인다, E24d)
             rid = b.pop("rid", None)

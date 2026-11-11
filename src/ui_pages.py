@@ -291,11 +291,13 @@ def show_answer(out, log_id, key, hint=None, compact=False):
         rid = f" ({', '.join(b['rids'])})" if is_dev() and b.get("rids") else ""  # 행 ID는 개발자 모드에서만(E24d)
         if b["kind"] == "확인불가":
             md(U.callout("warn", f'<b>확인 불가</b> · {U.esc(b["text"])}'))
+        elif b["kind"] == "일부확인불가":
+            md(U.callout("info", f'<b>일부 확인 불가</b> · 핵심 내용은 근거가 있어요'))
         elif b["kind"] == "학과확인필요":
             md(U.callout("warn", f'<b>학과 확인 필요</b> · {U.esc(b["text"] + rid)}'))
         else:
             md(U.callout("info", U.esc(b["text"] + rid)))
-    if hint and any(b["kind"] == "확인불가" for b in out["badges"]):  # '확인 불가' 배지가 있을 때만(2026-11-09 승인 규칙)
+    if hint and any(b["kind"] in ("확인불가", "일부확인불가") for b in out["badges"]):  # '확인 불가' 배지가 있을 때만(2026-11-09 승인 규칙)
         md(U.callout("soft", "내 졸업요건의 체크리스트에 관련 요건이 있을 수 있어요. (항목: " + U.esc(" · ".join(hint)) + ")"))
     with st.container(key=f"ans_{key}"):
         show_body(out["answer"] if is_dev() else S.strip_ids(out["answer"]))  # 표시할 때만 행 ID 토큰을 지운다(저장·평가용 원문 답은 그대로, E24d)

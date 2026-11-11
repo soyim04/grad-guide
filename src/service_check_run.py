@@ -66,7 +66,7 @@ def main():
         cards = " | ".join("[{}] {}".format(",".join(map(str, s["nums"])), s["id"] if s["kind"] == "기준표" else f"{s['title']} {s['article']}") for s in out["sources"])
         badges = " | ".join(f"{b['kind']}: {b['text']}" for b in out["badges"])
         hint = []
-        if isinstance(year, int) and any(b["kind"] == "확인불가" for b in out["badges"]):  # 화면과 같은 규칙: 확인 불가 배지가 있을 때만
+        if isinstance(year, int) and any(b["kind"] in ("확인불가", "일부확인불가") for b in out["badges"]):  # 화면과 같은 규칙: 확인 불가 배지가 있을 때만
             hint = S.checklist_hint(q, univ, year, dept, entry, False)
         total += out["cost_usd"]
         rows.append({"번호": i, "대학": univ, "학번": year, "학과": dept, "입학구분": entry, "질문": q, "경로": out["route"], "답변": out["answer"],
