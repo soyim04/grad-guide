@@ -200,6 +200,12 @@ def lookup(question):
             return None, "영역 행 없음"
         if mentions and not any_spec and not dept_in_criteria(univ[0], question):
             return None, f"질문의 {mentions}에 맞는 대상 행 없음"
+        # E31 [4]: 조회한 행의 조건이 "졸업학점 127·130·…학점 학과"처럼 졸업학점 값에 걸려 있으면(배재 수강상한) 그 학과·학번의 졸업학점 행도 함께 넘긴다.
+        # 없으면 LLM이 질문자의 칸을 못 고르고 확인 불가로 답한다. 학번이 없으면 행을 고를 수 없어 건너뛴다.
+        if year and "졸업학점" not in items and any("졸업학점" in r["조건"] for r in rows):
+            cand = [r for r in CRITERIA if r["대학"] == univ[0] and r["항목"] == "졸업학점" and r["기준값여부"] == "기준" and in_range(r, year)]
+            spec = [r for r in cand if r["대상"] != "전체" and target_mentioned(r["대상"], question)]
+            rows += spec or [r for r in cand if r["대상"] == "전체"]
         out[year] = rows
     return out, ""
 

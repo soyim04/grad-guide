@@ -135,7 +135,8 @@ class Engine:
         route = {"criteria-calc": "계산", "criteria-lookup": "조회"}.get(row["컬렉션"], "규정 검색")
         return {"answer": body, "tail": tail, "sources": sources, "badges": badges, "route": route, "cost_usd": cost,
                 "latency_ms": int((time.time() - t0) * 1000), "question_used": q, "used_dept": used, "calc_text": row.get("계산결과", ""),
-                "tokens_in": row["입력토큰"], "tokens_out": row["출력토큰"], "embed_tokens": res.embed_tokens}
+                "tokens_in": row["입력토큰"], "tokens_out": row["출력토큰"], "embed_tokens": res.embed_tokens,
+                "retrieved": row.get("검색청크", ""), "lexical_extra": row.get("어휘추가청크", "")}  # E31: 실제로 모델에 넘어간 근거 청크(인용 안 한 것 포함)
 
     # ---- 출처 카드·배지 ----
     def _sources_and_badges(self, row, body):

@@ -31,6 +31,7 @@ class Settings:
     calc: bool = False
     prompt: str = "v1"  # RAG 답변 프롬프트: v1 | v2
     lookup_prompt: str = "v1"  # 조회 답변 프롬프트: v1 | v2
+    lexical: bool = False  # E31 [2]: 벡터 top-5 뒤에 BM25 상위 4 중 새 청크를 덧붙임(RAG 경로만)
     collection: str = R.COLLECTION
     chunks_sha: str = ""
 
@@ -103,6 +104,12 @@ class Pipeline:
         where = query_filter.where_for(r["질문"]) if s.filter else None
         hit = col.query(query_embeddings=[vec], n_results=R.K, where=where, include=["documents", "metadatas", "distances"])
         ids, docs, metas, dists = hit["ids"][0], hit["documents"][0], hit["metadatas"][0], hit["distances"][0]
+        extra_ids = []
+        if s.lexical:
+            import lexical
+            extra = lexical.extra_chunks(col, r["질문"], where, ids)
+            extra_ids = [e[0] for e in extra]
+            ids, docs, metas = ids + extra_ids, docs + [e[1] for e in extra], metas + [e[2] for e in extra]  # 번호 6~: 벡터 top-5 뒤
         context = "\n\n".join(f"{R.chunk_header(i, m)}\n{d}" for i, (m, d) in enumerate(zip(metas, docs), 1))
         user = f"[근거]\n{context}\n\n[질문]\n{r['질문']}"
         ans, tin, tout = chat.json(R.MODEL, self.system, user, R.ANSWER_SCHEMA, "answer")
@@ -124,5 +131,7 @@ class Pipeline:
             "온도": "0" if chat.temperature == 0 else "기본(temperature 거부)",
             "실행시각": datetime.now().isoformat(timespec="seconds"), "입력토큰": tin, "출력토큰": tout,
         }
+        if s.lexical:
+            row["어휘추가청크"] = ";".join(extra_ids)
         notes.append(f"  {r['id']} 인용 {cited} 혼입 {mix['합계혼입']}/{mix['합계대상']}")
         return Result(row, notes, embed_tokens)

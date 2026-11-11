@@ -340,7 +340,7 @@ def cmd_answer(args):
     chat = Chat(client)
     pl = pipeline.Pipeline(client, col, chat, pipeline.Settings(
         filter=args.filter, expand=args.expand, lookup=args.lookup, calc=args.calc, prompt=args.prompt,
-        lookup_prompt=args.lookup_prompt, collection=collection, chunks_sha=sha))
+        lookup_prompt=args.lookup_prompt, lexical=getattr(args, "lexical", False), collection=collection, chunks_sha=sha))
     version = pl.version
     search_q = [pl.search_query(r["질문"]) for r in rows]  # 실험 3: 검색용 임베딩만 확장, 답변 모델은 원래 질문
     emb = client.embeddings.create(model=EMBED_MODEL, input=search_q)
@@ -561,6 +561,7 @@ def main():
     a.add_argument("--prompt", choices=["v1", "v2"], default="v1", help="RAG 답변 프롬프트 (v2 = 실험 9, 조회 경로 lookup-v1에는 영향 없음)")
     a.add_argument("--calc", action="store_true", help="계산·비교 질문은 코드가 계산 (실험 11, 조회·RAG보다 먼저 시도)")
     a.add_argument("--lookup-prompt", choices=["v1", "v2", "v3"], default="v1", help="조회 경로 답변 프롬프트 (v2 = 실험 10, 기본 v1)")
+    a.add_argument("--lexical", action="store_true", help="벡터 top-5 뒤에 BM25 상위 4 중 새 청크를 덧붙임 (실험 31)")
     a.add_argument("--ids", default="", help="쉼표로 구분한 문항 ID만 실행 (이월 규칙으로 일부만 다시 돌릴 때)")
     j = sub.add_parser("judge")
     j.add_argument("--smoke", action="store_true")

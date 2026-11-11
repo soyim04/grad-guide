@@ -45,6 +45,17 @@ CASES = [
     ("한밭", 2024, "산업디자인학과", "신입", "전공 기준 알려줘"),  # 21 (E25 학과 확장)
     ("한밭", 2024, "기계공학과", "편입", "편입생은 전공 몇 학점 들어야 해?"),  # 22 (E29: 학과 무관 행 HB-078의 성인전담 문구)
     ("한남", 2022, "간호학과", "신입", "졸업학점이랑 전공 몇 학점이야?"),  # 23 (E29: 이수유형 값 "심화단수"가 답에 나옴)
+    ("한남", 2023, "경영정보학과", "신입", "휴학 최대 몇 학기?"),  # 24 (E31 [1] 단위가 다른 질문)
+    ("한남", 2023, "경영정보학과", "신입", "계절학기는 몇 학점까지 들을 수 있어?"),  # 25 (E31 [2] 세칙 제59조, 벡터 12위)
+    ("한밭", 2024, "융합경영학과", "신입", "학사경고 몇 번 받으면 제적돼?"),  # 26 (E31 [2] 학칙 제47조, 벡터 70위)
+    ("한밭", 2024, "융합경영학과", "신입", "재수강하면 성적 최대 몇까지 받아?"),  # 27 (E31 [2] 학사운영규정 제50조, 벡터 17위)
+    ("한남", 2023, "경영정보학과", "신입", "장학금 받으려면 평점 몇 이상이야?"),  # 28 (E31 [3] 졸업 평점 조회로 가던 질문)
+    ("배재", 2025, None, "신입", "평점 4.3이면 몇 학점까지 신청돼?"),  # 29 (E31 [3] 보강 → 수강상한, 정답 21학점)
+    ("배재", 2023, "경찰법학부", "신입", "한 학기에 몇 학점까지 신청할 수 있어?"),  # 30 (E31 [4])
+    ("배재", 2023, None, "신입", "한 학기에 몇 학점까지 신청할 수 있어?"),  # 31 (E31 [4], IT경영정보 2023: 18·21·15)
+    ("배재", 2025, None, "신입", "조기졸업 하려면 평점 몇 이상이야?"),  # 32 (E31 [3], 제68조 4.25·F 없음, 벡터 22위)
+    ("목원", 2025, None, "신입", "조기졸업 하려면 평점 몇 이상이야?"),  # 33 (E31 [3], 4.25 + 편입학자 불허)
+    ("목원", 2025, None, "신입", "군대에서 딴 학점도 인정돼?"),  # 34 (E31 [2], 시행세칙 제43조의4, 벡터 5위)
 ]
 
 
@@ -52,10 +63,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", type=int, nargs="*", help="실행할 문항 번호(기본 전부)")
     ap.add_argument("--tag", default="", help="결과 파일 이름 꼬리표")
+    ap.add_argument("--lexical", action="store_true", help="BM25 덧붙임 켬(E31 [2], 전후 비교용)")
     ap.add_argument("--lookup-prompt", choices=["v2", "v3"], default="", help="조회 답변 프롬프트(기본: 서비스 설정, E29 비교용)")
     a = ap.parse_args()
     if a.lookup_prompt:
         engine.SERVICE_SETTINGS["lookup_prompt"] = a.lookup_prompt
+    if a.lexical:
+        engine.SERVICE_SETTINGS["lexical"] = True
     eng = engine.Engine()
     rows, total = [], 0.0
     for i, (univ, year, dept, entry, q) in enumerate(CASES, 1):
@@ -71,7 +85,8 @@ def main():
         total += out["cost_usd"]
         rows.append({"번호": i, "대학": univ, "학번": year, "학과": dept, "입학구분": entry, "질문": q, "경로": out["route"], "답변": out["answer"],
                      "근거카드": cards, "배지": badges, "체크리스트안내": " · ".join(hint), "실제질문": out["question_used"],
-                     "비용_usd": f"{out['cost_usd']:.5f}", "응답_ms": out["latency_ms"]})
+                     "비용_usd": f"{out['cost_usd']:.5f}", "응답_ms": out["latency_ms"],
+                     "모델에넘긴청크": out.get("retrieved", ""), "어휘추가청크": out.get("lexical_extra", "")})
         print(f"{i:>2} {univ} {year} [{out['route']}] {q} -> {len(out['answer'])}자 ${out['cost_usd']:.5f}")
     path = ROOT / "eval" / "results" / f"service_check_{date.today():%Y%m%d}{'_' + a.tag if a.tag else ''}.csv"
     with path.open("w", encoding="utf-8-sig", newline="") as f:
