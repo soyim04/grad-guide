@@ -677,6 +677,11 @@ def cmd_logic():
           (not r_in.get("ok") or (not r_in["full"] and not r_in["floor_note"] and len(r_in["reasons"]) == len(set(x.split(": ", 1)[1] for x in r_in["reasons"])) )), str(r_in.get("reasons") or r_in.get("why")))
     check("한밭 비교(E-A): 새 주전공 행은 잠정·기준이고 비고에 배지 문구(학과 확인 필요)가 없다(잠정 배지만 뜬다)",
           all(L.BY_ID["HB-%03d" % n_]["상태"] == "잠정" and not any(k in L.BY_ID["HB-%03d" % n_]["비고"] for k in engine.FLAG_NOTE) for n_ in range(79, 99)), "")
+    k = engine.unanswerable_kind
+    check("E33b: 문장 끝에 인용 [n]이 붙어도 문장을 나눈다 — 첫 문장이 답이고 뒤 문장이 확인 불가면 '일부확인불가'(조회 경로 답 #15·#13형), 첫 문장이 확인 불가면 '확인불가', 인용이 없으면 '확인불가'",
+          k("2학년 편입생이면 2회입니다.[3] 편입은 면제입니다.[1][2] 질문에 학년이 없어 확인 불가입니다.") == "일부확인불가"
+          and k("핵심은 18학점입니다 [1]. 나머지는 확인 불가예요.") == "일부확인불가" and k("확인 불가입니다. 근거에 없어요.[1]") == "확인불가"
+          and k("핵심 18학점입니다. 나머지는 확인 불가입니다.") == "확인불가" and k("18학점입니다.[1]") is None)
     check("목원 비교(E-C): 응급구조학과 2026 주전공 33·54는 잠정 행(MW-363·364)", v26e == want and [L.BY_ID[i]["상태"] for i in ("MW-363", "MW-364")] == ["잠정", "잠정"], str(v26e))
     r, v = totals("한남", 2023, "경영정보학과")
     check("비교 H10(한남 2023): 부전공 66·다전공 72, 부전공이 6학점 적음", v == [66, 72] and r["less"] == "부전공" and r["diff"] == 6, str(v))
@@ -1174,6 +1179,15 @@ def cmd_app():
             ok2 = r["ok"] and all(f"{t['total']:g}학점" in h2 for t in r["table"] if t["total"] is not None) and (not r["less"] or (r["less"] in h2 and f"{r['diff']:g}학점" in h2)) \
                 and "근거 행" not in h2 and "근거:" in h2 and (("잠정 (학과 확인)" in h2) == any(x["상태"] == "잠정" for x in r["rows"])) and not re.search(r"(BJ|HN|HB|CN|MW)-\d{3}", h2) and "AI 설명 듣기" not in [b.label for b in at2.button] and ("AI 설명 보기" in [b.label for b in at2.button]) == can_ai
             check(f"화면: {u} {y} 비교표·결론이 S.compare 결과({r['less']} {r.get('diff')})와 같다", ok2, h2[:60])
+        # ---- E33b 쪽 표기·근거 줄 ----
+        import ui_pages as UP
+        check("E33b: 쪽 표기는 '(1·4쪽)' 형식, PDF·규정 같은 글자와 괄호 속 인쇄 쪽은 빼고 같은 쪽은 한 번만",
+              UP.format_pages("PDF 1, 4; PDF 4") == "1·4쪽" and UP.format_pages("3(3)~4(4); 6(6); 21(21); PDF 1") == "3~4·6·21·1쪽"
+              and UP.format_pages("49~50(49~50); 50(50)") == "49~50·50쪽" and UP.format_pages("규정 PDF 1; 시행세칙 91(91), 94(94)") == "1·91·94쪽" and UP.format_pages("") == "")
+        _l_mw = UP.compare_source_line(S.compare("목원", 2023, "경찰법학과")["rows"])
+        _l_hb = UP.compare_source_line(S.compare("한밭", 2023, "경제학과")["rows"])
+        check("E33b: 비교 근거 줄은 같은 조항의 쪽을 합쳐 한 번만(목원 복수전공 규정 1번, 쪽 1·4), 한밭의 긴 조항을 '…'로 자르지 않는다",
+              _l_mw.count("복수전공에 관한 규정 제6조 ① 및 별표 1") == 1 and "(1·4쪽)" in _l_mw and "…" not in _l_hb and "융합다전공 운영지침 제2조 ① 1·2호" in _l_hb and UP.short_article("가" * 80) == "가" * 80, _l_mw + " | " + _l_hb)
         # ---- E19b 홈 3단계 버튼 · 세부 항목 표시 이름 ----
         at = pick(run(), "배재", 2023, "신입")
         check("화면: [E22] 시작하기 단계 2의 링크형 버튼 → 내 졸업요건 페이지(① 졸업요건이 보임), 스크롤 표시·스크롤 보조(iframe)는 없음",
@@ -1495,7 +1509,7 @@ def cmd_cards():
                     text = P.U.esc(it["text"])
                     if text and any(text == d or (len(text) > 12 and text in d) for d in divs):
                         same.append((univ, year, it["title"]))
-                    if re.search(r"(?:쪽|등급|상태|대상|판본)(?:\s*·|\s*$)", " ".join(divs)) or re.search(r"(?:^|·)\s*·", " ".join(divs)):
+                    if re.search(r"(?:(?<!\d)쪽|등급|상태|대상|판본)(?:\s*·|\s*$)", " ".join(divs)) or re.search(r"(?:^|·)\s*·", " ".join(divs)):
                         empty.append((univ, year, it["title"]))
     check(f"카드: 체크리스트 {n}개 카드 위에는 근거 문장(출처 줄)이 없다", n > 100 and not top_src, str(top_src[:3]))
     check("카드: 같은 문장이 위(결과 한 줄)와 근거 보기 안에 두 번 나오지 않고, 근거 보기 안에서도 중복 없음", not same and not dup, str((same[:3], dup[:3])))

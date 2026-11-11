@@ -49,7 +49,7 @@ def unanswerable_kind(body):
     첫 문장이 확인 불가이거나 인용이 없으면 '확인불가'(지금처럼 강하게). 표현이 없으면 None."""
     if not R.UNANSWERABLE_RE.search(body):
         return None
-    first = re.split(r"(?<=[.!?。])\s|\n", body.strip())[0]
+    first = re.split(r"(?<=[.!?。])(?:\[\d+\])*\s+|\n", body.strip())[0]  # 문장 끝 뒤에 인용 [n]이 붙어 있어도 문장을 나눈다(E33b)
     if re.search(r"\[\d+\]", body) and not R.UNANSWERABLE_RE.search(first):
         return "일부확인불가"
     return "확인불가"

@@ -189,13 +189,31 @@ def plan_for(sc):
 
 # ---------- 표시 부품 ----------
 
-def short_article(text, limit=44):
+def short_article(text, limit=None):
     """'세칙Ⅰ 제64조 ⑤ 1호 (일반 편입생의 …; 개정 …)' → '세칙Ⅰ 제64조 ⑤ 1호'. 괄호 설명·개정 이력은 근거 보기에 둔다."""
     t = re.sub(r"(제\d+조(?:의\d+)?)\([^)]*\)", r"\1", str(text)).strip()  # 제64조(제목) → 제64조
     i = t.find(" (")
     if i > 0:
         t = t[:i]
-    return t if len(t) <= limit else t[:limit].rstrip() + "…"
+    return t if limit is None or len(t) <= limit else t[:limit].rstrip() + "…"  # 기본은 자르지 않고 화면에서 줄바꿈(E33b)
+
+
+_PAGE_RE = re.compile(r"(\d+)(?:\(\d+(?:~\d+)?\))?(?:\s*~\s*(\d+)(?:\(\d+(?:~\d+)?\))?)?")
+
+
+def format_pages(raw):
+    """기준표 쪽 표기 '3(3)~4(4); 6(6); PDF 1, 4' → '3~4·6·1·4쪽'. 'PDF'·'규정'·'시행세칙' 같은 글자와 괄호 속 인쇄 쪽은 빼고 같은 쪽은 한 번만(E33b).
+    숫자를 못 읽으면 원문 그대로"""
+    items = []
+    for tok in re.split(r"[;,]", str(raw or "")):
+        tok = re.sub(r"[가-힣A-Za-z]+", " ", tok).strip()
+        m = _PAGE_RE.fullmatch(tok)
+        if not m:
+            continue
+        s = m.group(1) + (f"~{m.group(2)}" if m.group(2) else "")
+        if s not in items:
+            items.append(s)
+    return ("·".join(items) + "쪽") if items else str(raw or "").strip()
 
 
 def short_title(name):
@@ -232,7 +250,7 @@ def checklist_html(items, limit=None):
         det = []  # E30: 카드 위에는 제목 + 결과 한 줄만, 근거 문장(조항·비고)은 근거 보기 안에만
         if it.get("src"):
             s = it["src"]
-            det = [f'{dev_id(s["id"])}{U.esc(s["source"])}', meta_line(("쪽", s["pages"]), ("등급", s["grade"]), ("상태", s["status"]))]
+            det = [f'{dev_id(s["id"])}{U.esc(s["source"])}', meta_line(("", format_pages(s["pages"])), ("등급", s["grade"]), ("상태", s["status"]))]
         if it.get("extra"):
             det.append(U.esc(it["extra"]))
         out.append(f'<div class="ck ck-{cls}"><span class="badge b-{cls}">{U.esc(label)}</span>'
@@ -275,7 +293,7 @@ def sources_html(srcs):
         if s["kind"] == "기준표":
             top = f'{nums}<span>{U.esc(s["title"])}</span><span>{U.esc(short_article(s["article"]))}</span>'
             meta = f'값 <b>{U.esc(s["value"])}</b>'
-            det = [meta_line(("대상", s["target"]), ("상태", s["status"])), f'{dev_id(s["id"])}{U.esc(s["article"])}', meta_line(("쪽", s["pages"]), ("등급", s["grade"]))]
+            det = [meta_line(("대상", s["target"]), ("상태", s["status"])), f'{dev_id(s["id"])}{U.esc(s["article"])}', meta_line(("", format_pages(s["pages"])), ("등급", s["grade"]))]
         else:
             ed = s.get("edition") or ""
             ed_chip = U.badge("cur" if ed.startswith("현행") else "old", ed.split("(")[0]) if ed else ""
@@ -599,9 +617,9 @@ def page_remaining(sc):
         md('<div class="card-h">졸업하려면 이것들을 채워야 해요</div>')
         md(f'<div class="card-sub">졸업학점 <b>{U.esc(S.fmt_value(grad))}</b></div>')  # 대학·학번·학과는 페이지 제목에 있어 반복하지 않는다
         with st.expander("근거 보기"):
-            st.markdown(f"{dev_id(grad['행ID'], md=True)}이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n{meta_plain(('쪽', grad['출처쪽']), ('등급', grad['출처등급']), ('상태', grad['상태']))}")
+            st.markdown(f"{dev_id(grad['행ID'], md=True)}이수 방식 {plan['method'] or '단일'} · {grad['출처조항']}  \n{meta_plain(('', format_pages(grad['출처쪽'])), ('등급', grad['출처등급']), ('상태', grad['상태']))}")
             if cap_row:
-                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n{dev_id(cap_row['행ID'], md=True)}{cap_row['출처조항']} · {meta_plain(('쪽', cap_row['출처쪽']), ('등급', cap_row['출처등급']))}")
+                st.markdown(S.transfer_cap_text(univ, sc["transfer_grade"], grad["값"]) + f"  \n{dev_id(cap_row['행ID'], md=True)}{cap_row['출처조항']} · {meta_plain(('', format_pages(cap_row['출처쪽'])), ('등급', cap_row['출처등급']))}")
         generic_note(sc)
         if plan["tier"] == "T3":
             md('<div class="ck-src">영역별 남은 학점은 계산하지 않고, 규정 표의 영역별 기준만 보여 드려요.</div>')
@@ -687,14 +705,14 @@ def compare_conclusion_html(r):
 
 
 def compare_source_line(rows):
-    """비교표 근거 한 줄: '근거: 조항 (쪽 …) / 조항 (쪽 …)'. 같은 조항은 한 번만, 잠정 행이 섞이면 '잠정 (학과 확인)'. 행 ID는 쓰지 않는다."""
-    seen, parts = set(), []
+    """비교표 근거 한 줄: '근거: 조항 (1·4쪽) / 조항 (6쪽)'. 같은 조항은 쪽을 합쳐 한 번만(E33b), 조항은 자르지 않는다. 잠정 행이 섞이면 '잠정 (학과 확인)'. 행 ID는 쓰지 않는다."""
+    pages = {}
     for x in rows:
-        art, pg = short_article(x["출처조항"], limit=60), str(x["출처쪽"] or "").strip()
-        if (art, pg) in seen:
-            continue
-        seen.add((art, pg))
-        parts.append(art + (f" (쪽 {pg})" if pg else ""))
+        pages.setdefault(short_article(x["출처조항"]), []).append(str(x["출처쪽"] or "").strip())
+    parts = []
+    for art, pgs in pages.items():
+        pg = format_pages("; ".join(p for p in pgs if p))
+        parts.append(art + (f" ({pg})" if pg else ""))
     line = "근거: " + " / ".join(parts)
     return line + (" · 잠정 (학과 확인)" if any(x["상태"] == "잠정" for x in rows) else "")
 
