@@ -8,7 +8,13 @@
 
 실행: .venv\\Scripts\\python.exe src\\blank_test.py          (웹검색 끔)
       .venv\\Scripts\\python.exe src\\blank_test.py --web    (웹검색 켬)
+      .venv/Scripts/python.exe src/blank_test.py --web --input <질문 CSV> --out <결과 CSV>
+        (다른 질문 파일로 돌릴 때. 8단계 홀드아웃 GPT 비교용. --input을 주면 --out도 반드시 줘야 한다)
+
+옵션 추가 기록(2026-11-12): --input/--out은 평가 스크립트만 바꾼 것으로 서비스 코드·파이프라인·동결과 무관하다.
+어느 입력이든 id와 질문 열만 읽고, 정답·근거 등 다른 열은 읽지도 모델에 보내지도 않는다.
 """
+import argparse
 import csv
 import sys
 from datetime import date, datetime
@@ -59,14 +65,27 @@ def ask_web(client, question):
     return res.output_text or "", res.usage.input_tokens, res.usage.output_tokens, urls, n_search
 
 
+def parse_args(argv):
+    ap = argparse.ArgumentParser(description="빈손 테스트: 질문만 모델에 보내고 답을 저장한다.")
+    ap.add_argument("--web", action="store_true", help="웹검색 켬")
+    ap.add_argument("--input", type=Path, default=None, help="질문 CSV (id, 질문 열만 읽음). 기본: eval/blank_test.csv")
+    ap.add_argument("--out", type=Path, default=None, help="결과 CSV 경로. --input을 주면 필수")
+    args = ap.parse_args(argv)
+    if args.input is not None and args.out is None:
+        ap.error("--input을 주면 --out도 줘야 합니다 (기본 결과 파일명이 빈손 15문항 결과와 섞이지 않게)")
+    return args
+
+
 def main():
-    web = "--web" in sys.argv[1:]
+    args = parse_args(sys.argv[1:])
+    web = args.web
+    questions = args.input or QUESTIONS
     load_dotenv(ROOT / ".env")
-    out = RESULTS_DIR / f"{date.today().isoformat()}_blank_web-{'on' if web else 'off'}_{MODEL}.csv"
+    out = args.out or RESULTS_DIR / f"{date.today().isoformat()}_blank_web-{'on' if web else 'off'}_{MODEL}.csv"
     if out.exists():
         sys.exit(f"이미 있는 결과 파일이라 덮어쓰지 않고 멈춥니다: {out.name}")
 
-    with QUESTIONS.open(encoding="utf-8-sig", newline="") as f:
+    with questions.open(encoding="utf-8-sig", newline="") as f:
         items = [{"id": r["id"], "질문": r["질문"]} for r in csv.DictReader(f)]
 
     client = OpenAI()
@@ -114,7 +133,7 @@ def main():
         "출력 토큰": t_out,
         "비용(달러)": f"{cost:.5f}",
         "메모": (f"웹검색 켬(max_tool_calls={MAX_TOOL_CALLS}), {len(items)}문항, 검색 호출 {n_search_total}회, 도구 호출료 별도(비용 열은 토큰 비용만)"
-                 if web else f"웹검색 끔, {len(items)}문항") + (f", 실패 {failed}" if failed else ""),
+                 if web else f"웹검색 끔, {len(items)}문항") + (f", 입력 {questions.name}" if args.input else "") + (f", 실패 {failed}" if failed else ""),
     })
     print(f"저장: {out.relative_to(ROOT).as_posix()}")
     print(f"토큰 입력 {t_in:,} / 출력 {t_out:,}, 비용 약 ${cost:.5f} → {USAGE_LOG.relative_to(ROOT).as_posix()}")
