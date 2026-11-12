@@ -105,6 +105,8 @@ def run_a():
     check()
     path = RES / f"{TODAY}_holdout-a_service-path_{R.MODEL}.csv"
     no_overwrite(path)
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
     R.DEV_CSV = A_CSV  # run_rag.cmd_answer가 읽는 평가셋을 홀드아웃 A로 바꾼다(코드는 그대로, dev와 같은 경로)
     R.result_base = lambda smoke, tag="": path.with_suffix("")
     args = SimpleNamespace(chunks="", collection="", ids="", limit=0, tag="", filter=True, expand=True, lookup=True, calc=True,
@@ -171,6 +173,8 @@ def newest(pattern):
 
 def judge(which):
     check()
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
     if which == "a":
         R.DEV_CSV, ans = A_CSV, newest(f"*_holdout-a_service-path_{R.MODEL}.csv")
     elif which == "b":

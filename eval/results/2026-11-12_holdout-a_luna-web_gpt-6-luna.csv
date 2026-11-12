@@ -1,0 +1,61 @@
+﻿id,질문,답변,모델,실행시각,인용URL,검색호출수
+H01,한남대 2025학번 간호학과는 졸업하려면 몇 학점이야?,한남대 **간호학과 2025학번의 졸업 최저 이수학점은 128학점**입니다. 총학점뿐 아니라 간호학과 전공·교양 필수 과목도 정해진 기준에 맞게 이수해야 해요. ([hnu.kr](https://hnu.kr/kor/about/ACollegeBulletin2025/ACollegeBulletin11.pdf?utm_source=openai)),gpt-6-luna,2026-11-12T11:27:08,https://hnu.kr/kor/about/ACollegeBulletin2025/ACollegeBulletin11.pdf?utm_source=openai,5
+H06,"한남대 2022학번인데, 주전공이랑 다전공에 같은 과목이 있으면 둘 다 인정돼? 몇 학점까지야?","네. **2022학번은 주전공과 다전공에 편성된 동일 과목을 최대 6학점까지 중복 인정**받을 수 있습니다. 한남대 규정상 **2019~2022학년도 입학생은 중복 인정 6학점 이내**입니다. ([hnu.kr](https://hnu.kr/kor/about/ACollegeBulletin2024/ACollegeBulletin3.pdf))
+
+단, 두 전공의 교육과정에 **동일한 과목으로 편성된 경우**에 해당하고, 중복 인정은 그 과목을 **두 전공까지만** 적용할 수 있습니다. 따라서 제3전공까지 같은 과목을 중복 인정받을 수는 없습니다. ([hnu.kr](https://hnu.kr/kor/about/ACollegeBulletin2024/ACollegeBulletin3.pdf))",gpt-6-luna,2026-11-12T11:27:21,https://hnu.kr/kor/about/ACollegeBulletin2024/ACollegeBulletin3.pdf,2
+H07,한남대 2023학번 다전공은 언제 어떻게 신청해?,"**2023학번도 다전공 신청은 학기별로 정해진 기간에 할 수 있어요.** 신청 자격에 학년 제한은 없고, 제2전공은 이수학점이나 평점평균과 관계없이 신청할 수 있습니다. 다만 전공별 제한이나 선발 여부는 확인해야 해요. ([hannam.ac.kr](https://www.hannam.ac.kr/kor/guide/guide_02.html?isGongjiPostList=N&pPageNo=1&pPostNo=200386&pRowCount=30&utm_source=openai))
+
+- **신청 시기:** 보통 6월·12월 첫째 주  
+- **다음 신청 기간:** **2026년 12월 1일~7일**(2027학년도 1학기 신청 기간) ([hannam.ac.kr](https://hannam.ac.kr/kor/guide/guide_01_1_2.html?utm_source=openai))
+- **신청 경로:** 마이포탈(my.hnu.kr) → 메뉴 → **학적 → 다전공신청**. 융합전공이면 **융합전공신청** 메뉴를 이용하세요. ([flec.hannam.ac.kr](https://flec.hannam.ac.kr/kor/guide/guide_03_6.html?utm_source=openai))
+- **선발:** 신청 후 심사를 거쳐 승인 여부가 결정됩니다. 신청 전에 학사공지에서 희망 전공의 선발 가능 여부와 세부 안내를 확인하세요. ([hannam.ac.kr](https://www.hannam.ac.kr/kor/guide/guide_02.html?isGongjiPostList=N&pPageNo=1&pPostNo=200386&pRowCount=30&utm_source=openai))
+
+참고로 **2023학번은 졸업 때 다전공·부전공·트랙·마이크로디그리·코드쉐어 중 하나를 필수로 이수해야** 합니다. 다전공을 택하면 중복 인정 학점은 2023학번 기준 **최대 6학점**이에요. ([hannam.ac.kr](https://hannam.ac.kr/kor/guide/guide_02.html?isGongjiPostList=N&pPageNo=2&pPostNo=200386&pRowCount=30&utm_source=openai))
+
+문의는 학사관리팀 **042-629-7248**로 할 수 있습니다. ([family.hannam.ac.kr](https://family.hannam.ac.kr/kor/guide/guide_02.html?pPostNo=176106&utm_source=openai))",gpt-6-luna,2026-11-12T11:27:35,"https://www.hannam.ac.kr/kor/guide/guide_02.html?isGongjiPostList=N&pPageNo=1&pPostNo=200386&pRowCount=30&utm_source=openai
+https://hannam.ac.kr/kor/guide/guide_01_1_2.html?utm_source=openai
+https://flec.hannam.ac.kr/kor/guide/guide_03_6.html?utm_source=openai
+https://hannam.ac.kr/kor/guide/guide_02.html?isGongjiPostList=N&pPageNo=2&pPostNo=200386&pRowCount=30&utm_source=openai
+https://family.hannam.ac.kr/kor/guide/guide_02.html?pPostNo=176106&utm_source=openai",2
+T03,한밭대 부전공은 몇 학점 들어야 해?,한밭대 부전공은 **21학점 이상** 이수해야 해요. 주전공 과목과 중복·유사한 과목은 심의를 거쳐 **최대 6학점까지** 인정될 수 있습니다. ([hanbat.ac.kr](https://www.hanbat.ac.kr/thumbnail/dataDetail/BULLETIN_202403070536366460.pdf?utm_source=openai)),gpt-6-luna,2026-11-12T11:27:40,https://www.hanbat.ac.kr/thumbnail/dataDetail/BULLETIN_202403070536366460.pdf?utm_source=openai,1
+T07,한밭대 국제학부가 아닌 학생은 부전공이랑 복수전공 중에 어느 쪽이 최소 이수학점이 적어?,"**부전공이 더 적어요.** 한밭대 안내 기준으로 부전공은 **21학점**, 복수전공은 **36~51학점**입니다. 따라서 국제학부 소속이 아닌 학생도 일반 기준으로 보면 부전공이 최소 **15학점** 적습니다. 다만 복수전공 학점은 학과에 따라 달라질 수 있어요. ([hanbat.ac.kr](https://www.hanbat.ac.kr/kor/sub05_030104.do))",gpt-6-luna,2026-11-12T11:27:49,https://www.hanbat.ac.kr/kor/sub05_030104.do,3
+M06,목원대에서 전공이랑 부전공에 같은 과목을 둘 다 인정받을 수 있어? 부전공 하기 전에 들은 과목은 어떻게 돼?,"목원대 안내 기준으로는 **같은 과목을 주전공과 부전공에 동시에 중복 인정받을 수 없어요.** 부전공은 18학점 이상 이수해야 합니다. ([mokwon.ac.kr](https://www.mokwon.ac.kr/kr/html/sub03/030504.html?utm_source=openai))
+
+**부전공으로 선발되기 전에 들은 과목**이라도 부전공 학과의 과목과 동일하면, 부전공 학과의 전공과목 성적으로 인정된다고 안내되어 있습니다. 다만 이 과목을 주전공 학점과 부전공 학점에 **동시에** 넣을 수는 없습니다. ([mokwon.ac.kr](https://www.mokwon.ac.kr/kr/html/sub03/030504.html?utm_source=openai))
+
+이미 들은 과목이 실제로 동일 과목으로 처리되는지, 본인 졸업사정에서 어느 이수구분으로 반영되는지는 학과나 학사지원과에 확인하는 게 안전합니다. 목원대 안내 페이지의 담당 연락처는 **042-829-7102**입니다. ([mokwon.ac.kr](https://www.mokwon.ac.kr/kr/html/sub03/030504.html?utm_source=openai))",gpt-6-luna,2026-11-12T11:27:57,https://www.mokwon.ac.kr/kr/html/sub03/030504.html?utm_source=openai,1
+C01,충남대 2025학번 영어교육과는 졸업하려면 몇 학점이야?,충남대 **영어교육과 2025학번은 졸업까지 총 150학점**을 이수해야 해요. 다만 총학점 외에도 학과별 교양·전공 이수 기준과 졸업 필수 요건을 충족해야 합니다. ([plus.cnu.ac.kr](https://plus.cnu.ac.kr/html/kr/25file/2025_book.pdf)),gpt-6-luna,2026-11-12T11:28:06,https://plus.cnu.ac.kr/html/kr/25file/2025_book.pdf,3
+C07,충남대 2022학번은 다른 대학에서 딴 학점을 얼마나 인정받을 수 있어?,"**2022학번이라는 이유만으로 인정 학점이 딱 정해지는 건 아니고, 어떤 방식으로 다른 대학에서 이수했는지에 따라 달라요.**
+
+- **충남대 재학 중 타 대학 학점교류로 이수한 경우:** 국내·외 다른 대학에서 취득한 학점은 **졸업에 필요한 학점의 절반 이내**에서 인정됩니다. 계절학기도 이 한도에 포함되고, 이수 과목·학점은 사전 승인 등 절차를 거쳐야 해요. 예를 들어 졸업요건이 130학점이면 최대 65학점, 140학점이면 최대 70학점입니다. ([plus.cnu.ac.kr](https://plus.cnu.ac.kr/html/hub/affairs/affairs_020304.html))
+- **충남대에 편입하기 전에 다닌 대학에서 취득한 학점**을 말하는 거라면, 위 타 대학 학점교류 한도와는 별도로 봐야 합니다. 편입 여부와 학과별 학점 사정에 따라 인정 결과가 달라질 수 있어요.
+
+따라서 **재학 중 학점교류인지, 편입 전 학점인지**, 그리고 학과가 어디인지 알려주면 더 정확히 답할게요.",gpt-6-luna,2026-11-12T11:28:22,https://plus.cnu.ac.kr/html/hub/affairs/affairs_020304.html,3
+C11,충남대 2024학번 교필은 몇 학점이야?,"충남대 **2024학번 공통기초교양(교필)은 총 8학점**이에요: 기초글쓰기 2학점, 대학영어 1·2 각각 2학점, 대학생활과 진로설계·취업과 창업 각각 1학점입니다. ([plus.cnu.ac.kr](https://plus.cnu.ac.kr/html/kr/24file/2024_book.pdf))
+
+다만 핵심교양·전문기초교양 등 학과별 필수 이수까지 포함한 교양필수 학점은 소속 학과에 따라 달라질 수 있어요. ([plus.cnu.ac.kr](https://plus.cnu.ac.kr/html/kr/24file/2024_book.pdf))",gpt-6-luna,2026-11-12T11:28:33,https://plus.cnu.ac.kr/html/kr/24file/2024_book.pdf,2
+P03,배재대 2023학번이 다전공 하려면 자격이나 신청 시기가 어떻게 돼?,"배재대 **2023학번 신입생 기준**으로 보면, 다전공은 대체로 아래 조건이면 신청할 수 있어요.
+
+- **자격:** 제1전공에서 2학기 이상 이수하고 제1전공이 확정된 학생. 편입생은 제1전공에서 1학기 이상 이수하면 신청 가능합니다. 교원자격 취득을 위한 다전공은 별도 성적 기준이 있어요. 2026학년도 안내에는 평점평균 **2.75 이상**으로 기재돼 있습니다. ([pcu.ac.kr](https://pcu.ac.kr/images/site/kor/pdf/2026-1-handbook.pdf?v=20260515&utm_source=openai))
+- **신청 시기:** 매 학기 학교가 공지하는 기간에 신청합니다. 복수전공 학사가이드에는 **2학년 1학기 초부터 4학년 2학기 초까지**라고 안내돼 있어요. ([pcu.ac.kr](https://www.pcu.ac.kr/kor/contents/156))
+- **신청 방법:** 학생성장포털시스템에서 **학적 → 다전공 및 부전공 신청·결과 조회**로 들어가 신청합니다. 최근 안내에서는 승인 절차가 시스템 방식으로 바뀌었다고 공지했으니, 해당 학기 공지의 방법을 확인하세요. ([pcu.ac.kr](https://www.pcu.ac.kr/kor/contents/158))
+
+다만 **2023학번이 보통 진급대로라면 2026년 2학기에 4학년 2학기**일 수 있어요. 2026-2학기 신청은 3차 공지까지 확인되지만, 마지막 차수 공지가 **2026년 8월 31일**에 올라와 현재(2026년 11월 12일)는 해당 학기 신청기간이 지났을 가능성이 큽니다. 휴학·초과학기 여부나 다전공 종류에 따라 적용이 달라질 수 있으니, 다음 신청 가능 여부는 **교육혁신처 혁신교육지원팀(042-520-5483)**에 확인하는 게 가장 정확합니다. ([pcu.ac.kr](https://www.pcu.ac.kr/kor/article/Haksa_1/1748526515))
+
+※ 복수·연계·융합전공과 부전공은 세부 자격이나 대상 학과가 다를 수 있고, 간호학과 등 제한되는 전공도 있으니 희망 전공의 해당 학기 공지도 확인하세요. ([pcu.ac.kr](https://www.pcu.ac.kr/kor/contents/156))",gpt-6-luna,2026-11-12T11:29:00,"https://pcu.ac.kr/images/site/kor/pdf/2026-1-handbook.pdf?v=20260515&utm_source=openai
+https://www.pcu.ac.kr/kor/contents/156
+https://www.pcu.ac.kr/kor/contents/158
+https://www.pcu.ac.kr/kor/article/Haksa_1/1748526515",6
+P05,배재대 편입생이 전적대학에서 들은 과목을 다전공이나 부전공 학점으로 인정받을 수 있어?,"**전적대학에서 이수한 과목을 배재대 다전공·부전공 학점으로 대체 인정받는 것은 안 됩니다.** 배재대 규정에 편입생은 전적대학 과목으로 다전공·부전공 과목을 대체 인정받을 수 없다고 되어 있습니다. ([pcu.ac.kr](https://www.pcu.ac.kr/images/site/kor/pdf/summary_2022.pdf))
+
+다만 **배재대에 편입한 뒤 다전공·부전공 신청 전에 배재대에서 이수한 해당 전공 과목**은 대체 인정될 수 있습니다. 전적대 학점이 편입 후 주전공·교양 학점으로 인정되더라도, 그 사실만으로 다전공·부전공 학점이 되는 것은 아닙니다. ([pcu.ac.kr](https://www.pcu.ac.kr/images/site/kor/pdf/summary_2022.pdf))
+
+본인 학번의 세부 이수 기준은 학사지원팀(042-520-5215)에 확인하는 게 좋습니다. ([pcu.ac.kr](https://www.pcu.ac.kr/kor/article/ATCLb4aa01822?pageIndex=2))",gpt-6-luna,2026-11-12T11:29:08,"https://www.pcu.ac.kr/images/site/kor/pdf/summary_2022.pdf
+https://www.pcu.ac.kr/kor/article/ATCLb4aa01822?pageIndex=2",2
+X02,한밭대에서 복수전공 하려면 몇 학점이에요?,"한밭대 복수전공은 **입학연도와 신청 학과에 따라 다르지만, 2019학년도 이후 입학생 기준으로 36~51학점**을 이수해야 해요. 정확한 학점은 복수전공하려는 학과의 교육과정에 따라 달라집니다. 주전공과 겹치는 과목은 심의를 거쳐 일부 인정될 수 있어요. ([fund.hanbat.ac.kr](https://fund.hanbat.ac.kr/kor/sub05_030104.do?utm_source=openai))
+
+**2018학년도 이전 입학생은 기준이 다를 수 있으니**, 본인 입학연도와 희망 학과를 알려주시면 해당 기준을 더 구체적으로 확인해드릴게요.",gpt-6-luna,2026-11-12T11:29:15,https://fund.hanbat.ac.kr/kor/sub05_030104.do?utm_source=openai,2
+X04,대전대학교 졸업학점 알려줘,"대전대학교는 **일반학과 기준 졸업에 125학점 이상**이 필요해요. 다만 **입학년도와 학과에 따라 다릅니다**. 예를 들어 한의학과는 142학점, 건축학과는 160학점 기준이 적용됩니다. ([dju.ac.kr](https://www.dju.ac.kr/upload/cntntsFile/dju/doc_2900b992-90b6-4964-807f-79fb61749b041689750058453.pdf?utm_source=openai))
+
+또한 학점 외에 학과별 졸업요건이 있을 수 있어요. **입학년도와 학과**를 알려주시면 해당 기준을 확인해 드릴게요. ([dju.ac.kr](https://www.dju.ac.kr/lawpublic/main.do?utm_source=openai))",gpt-6-luna,2026-11-12T11:29:23,"https://www.dju.ac.kr/upload/cntntsFile/dju/doc_2900b992-90b6-4964-807f-79fb61749b041689750058453.pdf?utm_source=openai
+https://www.dju.ac.kr/lawpublic/main.do?utm_source=openai",2
