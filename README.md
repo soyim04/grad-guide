@@ -79,10 +79,10 @@ pip install -r requirements-lock.txt
 ## 진행 상황
 
 - [x] 제안서
-- [ ] 빈손 테스트 (`eval/blank_test.csv`)
-- [ ] 숫자 기준표 `data/criteria.csv`
-- [ ] 질문셋 작성, 홀드아웃 20% 동결
-- [ ] 기본 RAG, 고치기 전 점수
-- [ ] 개선 실험
-- [ ] 서비스 화면
+- [x] 빈손 테스트 (`eval/blank_test.csv`)
+- [x] 숫자 기준표 `data/criteria.csv`
+- [x] 질문셋 작성, 홀드아웃 20% 동결
+- [x] 기본 RAG, 고치기 전 점수
+- [x] 개선 실험
+- [x] 서비스 화면
 - [ ] 홀드아웃 최종 측정
