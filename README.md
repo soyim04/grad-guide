@@ -85,4 +85,4 @@ pip install -r requirements-lock.txt
 - [x] 기본 RAG, 고치기 전 점수
 - [x] 개선 실험
 - [x] 서비스 화면
-- [ ] 홀드아웃 최종 측정
+- [x] 홀드아웃 최종 측정
